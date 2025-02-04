@@ -27,7 +27,7 @@ export async function PostMessage(
 
   let worker
   if (!ctx.worker) {
-    worker = PostalService.actors.get(message.address.to)!;
+    worker = PostalService.actors.get(message.address.to as string)!;
   }
   else {
     worker = ctx.worker
