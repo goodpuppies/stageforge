@@ -72,7 +72,7 @@ export class PostalService {
     }
   }
 
-  OnMessage = (message: Message) => {
+  OnMessage = (message: Message) : void =>  {
     CustomLogger.log("postalservice", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
