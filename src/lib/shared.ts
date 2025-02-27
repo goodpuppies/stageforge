@@ -3,6 +3,7 @@ import { GenericActorFunctions, Message, TargetMessage } from "./types.ts";
 import { Signal, StandardizeAddress } from "./utils.ts";
 
 export async function runFunctions(message: Message, functions: GenericActorFunctions, ctx: any) {
+  //console.log("runFunctions", message);
   if (message.type.startsWith("CB:") && !ctx.callback) {
     throw new Error(`Callback received without a receiver: ${message.type}`);
   }

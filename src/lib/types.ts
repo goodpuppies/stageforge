@@ -1,7 +1,5 @@
-import type { ActorWorker } from "./ActorWorker.ts";
-
 // Worker interface
-export const worker = self as unknown as ActorWorker;
+export const worker = self as unknown as Worker;
 
 // ToAddress type
 export type ToAddress = string & { readonly _: unique symbol };
