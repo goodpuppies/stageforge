@@ -17,15 +17,17 @@ new PostMan(state.name, {
 } as const);
 
 async function main(_payload: string) {
+  console.log("actor", PostMan.state.id);
 
   const sub = await PostMan.create("./actors/sub.ts")
+  console.log("sub", sub)
   const sub2 = await PostMan.create("./actors/sub.ts")
 
-  PostMan.PostMessage({
+  /* PostMan.PostMessage({
     target: sub2,
     type: "CHANGENAME",
     payload: "sub2"
-  })
+  }) */
 
   PostMan.PostMessage({
     target: [sub, sub2],

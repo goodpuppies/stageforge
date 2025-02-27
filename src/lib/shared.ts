@@ -27,7 +27,11 @@ export async function PostMessage(
 
   let worker
   if (!ctx.worker) {
-    worker = PostalService.actors.get(message.address.to as string)!;
+    const actor = PostalService.actors.get(message.address.to as string);
+    if (!actor) {
+      throw new Error(`Actor not found: ${message.address.to}`);
+    }
+    worker = actor.worker;
   }
   else {
     worker = ctx.worker

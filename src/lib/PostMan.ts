@@ -16,6 +16,7 @@ const xstate = actorState({
   name: "",
   id: "",
   addressBook: new Set(),
+  topics: new Set(),
 });
 
 export class PostMan {
@@ -38,7 +39,8 @@ export class PostMan {
     };
   }
 
-  static async create(actorname: tsfile|URL): Promise<ToAddress> {
+  static async create(actorname: tsfile | URL): Promise<ToAddress> {
+    //console.log("create", actorname)
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
@@ -47,6 +49,24 @@ export class PostMan {
 
     PostMan.addressBook.add(result)
     return result;
+  }
+
+  static setTopic(topic: string) {
+    PostMan.PostMessage({
+      target: System,
+      type: "SET_TOPIC",
+      payload: topic
+    })
+    PostMan.state.topics.add(topic)
+  }
+
+  static delTopic(topic: string) {
+    PostMan.PostMessage({
+      target: System,
+      type: "DEL_TOPIC",
+      payload: topic
+    })
+    PostMan.state.topics.delete(topic)
   }
 
   static PostMessage(

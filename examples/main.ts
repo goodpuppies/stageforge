@@ -1,6 +1,7 @@
 import { PostalService } from "../src/mod.ts";
+import { IrohWebWorker } from "../../IrohWorker/IrohWorker.ts"
 
-const postalservice = new PostalService();
+const postalservice = new PostalService(IrohWebWorker);
 
 const mainAddress = await postalservice.add("./actors/actor.ts");
 

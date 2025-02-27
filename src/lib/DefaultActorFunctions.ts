@@ -14,7 +14,7 @@ export const functions = {
       type: "LOADED",
       payload: PostMan.state.id as ToAddress,
     });
-    // @ts-ignore: get custominit from importer
+        // @ts-ignore: get custominit from importer
     PostMan.functions.CUSTOMINIT?.(null, PostMan.state.id);
     CustomLogger.log("class", `initied ${PostMan.state.id} actor with args:`, payload);
   },

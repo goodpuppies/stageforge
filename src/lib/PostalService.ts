@@ -5,15 +5,33 @@ import {
   type GenericActorFunctions,
   System,
   type ToAddress,
+  type Actor,
 } from "./types.ts";
 import { CustomLogger } from "../logger/customlogger.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 
+// Worker constructor type that matches the standard Worker constructor
+export type WorkerConstructor = new (
+  scriptURL: string | URL,
+  options?: WorkerOptions
+) => Worker;
+
 export class PostalService {
-  public static actors: Map<string, Worker> = new Map();
+  public static actors: Map<string, Actor> = new Map();
   public callback: Signal<unknown> | null = null;
   static initSignal: Signal<ToAddress>;
-  worker = null
+  worker = null;
+  
+  // Custom Worker constructor
+  private static WorkerClass: WorkerConstructor = Worker;
+
+  // Constructor that accepts a custom Worker implementation
+  constructor(customWorkerClass?: WorkerConstructor) {
+    if (customWorkerClass) {
+      PostalService.WorkerClass = customWorkerClass;
+      CustomLogger.log("postalservice", "Using custom Worker implementation");
+    }
+  }
 
   public functions: GenericActorFunctions = {
     CREATE: async (payload: string) => {
@@ -37,6 +55,22 @@ export class PostalService {
     },
     MURDER: (payload: ToAddress) => {
       PostalService.murder(payload);
+    },
+    SET_TOPIC: (payload: { actorId: ToAddress, topic: string }) => {
+      const { actorId, topic } = payload;
+      const actor = PostalService.actors.get(actorId);
+      if (actor) {
+        actor.topics.add(topic);
+        CustomLogger.log("postalservice", `Actor ${actorId} subscribed to topic: ${topic}`);
+      }
+    },
+    DEL_TOPIC: (payload: { actorId: ToAddress, topic: string }) => {
+      const { actorId, topic } = payload;
+      const actor = PostalService.actors.get(actorId);
+      if (actor) {
+        actor.topics.delete(topic);
+        CustomLogger.log("postalservice", `Actor ${actorId} unsubscribed from topic: ${topic}`);
+      }
     }
   };
 
@@ -44,7 +78,7 @@ export class PostalService {
     CustomLogger.log("postalservice", "creating", address);
     // Resolve relative to Deno.cwd()
     const workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
-    const worker: Worker = new Worker(
+    const worker: Worker = new PostalService.WorkerClass(
       workerUrl,
       { name: address, type: "module" }
     );
@@ -60,14 +94,21 @@ export class PostalService {
     const id = await PostalService.initSignal.wait();
     //#endregion
     CustomLogger.log("postalservice", "created", id);
-    PostalService.actors.set(id, worker);
+    
+    // Create an Actor object
+    const actor: Actor = {
+      worker,
+      topics: new Set<string>()
+    };
+    
+    PostalService.actors.set(id, actor);
     return id;
   }
 
   static murder(address: string) {
-    const worker = PostalService.actors.get(address);
-    if (worker) {
-      worker.terminate();
+    const actor = PostalService.actors.get(address);
+    if (actor) {
+      actor.worker.terminate();
       PostalService.actors.delete(address);
     }
   }
@@ -83,7 +124,7 @@ export class PostalService {
       }
       else {
         if (!PostalService.actors.has(message.address.to)) { throw new Error() }
-        (PostalService.actors.get(message.address.to)!).postMessage(message);
+        (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
   };
