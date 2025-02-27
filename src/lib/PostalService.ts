@@ -18,8 +18,8 @@ export type WorkerConstructor = new (
 
 export class PostalService {
   public static actors: Map<string, Actor> = new Map();
-  public callback: Signal<unknown> | null = null;
-  static initSignal: Signal<ToAddress>;
+  private callbackMap: Map<symbol, Signal<any>> = new Map();
+  public callback: Signal<any> | null = null;
   worker = null;
   
   // Custom Worker constructor
@@ -46,9 +46,18 @@ export class PostalService {
       }
       this.callback.trigger(payload);
     },
-    LOADED: (payload: ToAddress) => {
-      CustomLogger.log("postalservice", "new actor loaded, id: ", payload)
-      PostalService.initSignal.trigger(payload);
+    LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
+      CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
+      
+      for (const [key, signal] of this.callbackMap.entries()) {
+        if (key.toString() === payload.callbackKey) {
+
+          signal.trigger(payload.actorId);
+          return;
+        }
+      }
+      
+      throw new Error("LOADED message received but no matching callback found");
     },
     DELETE: (payload: ToAddress) => {
       PostalService.actors.delete(payload);
@@ -84,15 +93,27 @@ export class PostalService {
     );
     worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
 
-    //#region init sig
-    PostalService.initSignal = new Signal<ToAddress>();
+
+    const callbackKey = Symbol('actor-creation');
+    const actorSignal = new Signal<ToAddress>();
+    this.callbackMap.set(callbackKey, actorSignal);
+    
+    // Send the INIT message with the callback key in the payload
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
-      payload: null,
+      payload: {
+        callbackKey: callbackKey.toString(),
+        originalPayload: null
+      },
     });
-    const id = await PostalService.initSignal.wait();
-    //#endregion
+    
+
+    const id = await actorSignal.wait();
+    
+
+    this.callbackMap.delete(callbackKey);
+    
     CustomLogger.log("postalservice", "created", id);
     
     // Create an Actor object
@@ -141,6 +162,6 @@ export class PostalService {
     message: TargetMessage | Message,
     cb?: boolean
   ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this)
+    return await PostMessage(message, cb, this);
   }
 }

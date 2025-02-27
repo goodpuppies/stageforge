@@ -81,6 +81,6 @@ export class PostMan {
     message: TargetMessage | Message,
     cb?: boolean
   ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this)
+    return await PostMessage(message, cb, this);
   }
 }

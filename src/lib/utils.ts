@@ -24,6 +24,7 @@ export function StandardizeAddress(message: TargetMessage | Message, ctx: any): 
       address: { fm: from, to: message.target },
       ...message,
     };
+    delete (addressedMessage as any).target;
   } else {
     addressedMessage = message;
   }
@@ -33,8 +34,10 @@ export function StandardizeAddress(message: TargetMessage | Message, ctx: any): 
 export class Signal<T> {
   private resolve: ((value: T) => void) | null = null;
   private promise: Promise<T> | null = null;
+  private id: symbol;
 
   constructor() {
+    this.id = Symbol('signal');
     this.promise = new Promise((res) => {
       this.resolve = res;
     });
@@ -46,7 +49,7 @@ export class Signal<T> {
 
   trigger(value: T): void {
     if (this.resolve) {
-      CustomLogger.log("actorsys", "signal triggered");
+      CustomLogger.log("actorsys", `signal ${this.id.toString()} triggered`);
       this.resolve(value);
     }
   }

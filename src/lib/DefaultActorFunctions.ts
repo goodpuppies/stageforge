@@ -7,16 +7,20 @@ import { CustomLogger } from "../logger/customlogger.ts";
 
 export const functions = {
   //initialize actor
-  INIT: (payload: string | null) => {
-    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}`;
+  INIT: (payload: { callbackKey: string, originalPayload: string | null } | null) => {
+    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}` as ToAddress;
+    const callbackKey = payload?.callbackKey || '';
     PostMan.PostMessage({
       address: { fm: PostMan.state.id, to: System },
       type: "LOADED",
-      payload: PostMan.state.id as ToAddress,
+      payload: {
+        actorId: PostMan.state.id as ToAddress,
+        callbackKey
+      },
     });
-        // @ts-ignore: get custominit from importer
-    PostMan.functions.CUSTOMINIT?.(null, PostMan.state.id);
-    CustomLogger.log("class", `initied ${PostMan.state.id} actor with args:`, payload);
+    // @ts-ignore: get custominit from importer
+    PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
+    CustomLogger.log("class", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   CB: (payload: unknown) => {
     if (!PostMan.callback) {
