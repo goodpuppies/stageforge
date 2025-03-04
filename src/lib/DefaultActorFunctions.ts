@@ -37,6 +37,6 @@ export const functions = {
   },
   ADDCONTACT: (payload: ToAddress) => {
     PostMan.state.addressBook.add(payload);
-    //console.log("book", PostMan.state.addressBook);
+    console.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook);
   },
 } as const;
