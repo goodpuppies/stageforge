@@ -42,8 +42,13 @@ export class PostalService {
 
   async add(address: string): Promise<ToAddress> {
     CustomLogger.log("postalservice", "creating", address);
-    // Resolve relative to Deno.cwd()
-    const workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
+    let workerUrl: string;
+    if (typeof Deno !== 'undefined') {
+      workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
+    } else {
+      const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+      workerUrl = new URL(address, baseUrl).href;
+    }
     const worker: Worker = new Worker(
       workerUrl,
       { name: address, type: "module" }
