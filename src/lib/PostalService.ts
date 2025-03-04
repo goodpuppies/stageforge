@@ -91,15 +91,18 @@ export class PostalService {
     },
     SET_TOPIC: async (payload: string) => {
       const topic = payload;
-      // The actor ID is the sender of the message
+      // The actor ID is the sender of the message BAD CODE
       const actorId = PostalService.lastSender as ToAddress;
-
-      if (!actorId) {
-        throw new Error("Cannot set topic: sender ID unknown");
-      }
-
+      if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
       const actor = PostalService.actors.get(actorId);
+
       if (actor) {
+        // Skip if the actor is already in this topic
+        if (actor.topics.has(topic)) {
+          console.log("postalservice", `Actor ${actorId} already subscribed to topic: ${topic}`);
+          return;
+        }
+        
         // Add the topic to the actor's topic set
         actor.topics.add(topic);
         console.log("postalservice", `Actor ${actorId} subscribed to topic: ${topic}`);
@@ -122,7 +125,10 @@ export class PostalService {
         // Register with the signaling server if available
         if (this.signalingClient) {
           try {
-            // Register for this specific topic
+            // Join the topic on the signaling server
+            this.signalingClient.joinTopic(actorId, topic, nodeId);
+
+            //Start listening on the topic
             this.signalingClient.onJoinTopic(topic, (remoteActorId, remoteNodeId) => {
               console.log("postalservice", `Signaling: Actor ${remoteActorId} joined topic ${topic} with nodeId: ${remoteNodeId || 'local'}`);
 
@@ -131,7 +137,8 @@ export class PostalService {
                 console.log("postalservice", `Creating proxy for remote actor ${remoteActorId}`);
                 this.createProxyActor(remoteActorId, remoteNodeId);
 
-                // Add the topic to the newly created actor
+
+                // Add the topic to the newly created actor # HMM???
                 const newActor = PostalService.actors.get(remoteActorId as ToAddress);
                 if (newActor) {
                   newActor.topics.add(topic);
@@ -139,8 +146,7 @@ export class PostalService {
               }
             });
 
-            // Join the topic on the signaling server
-            this.signalingClient.joinTopic(actorId, topic, nodeId);
+
             console.log("postalservice", `Registered actor ${actorId} with signaling server for topic ${topic}`);
           } catch (error) {
             console.error("postalservice", `Failed to register with signaling server:`, error);
@@ -149,8 +155,6 @@ export class PostalService {
           console.warn("postalservice", "Signaling client not initialized, topic-based discovery will not work");
         }
 
-        // Update addressbooks of all actors in the same topic
-        this.updateAddressBooks(actorId, topic);
       }
     },
     DEL_TOPIC: (payload: string) => {
@@ -173,7 +177,13 @@ export class PostalService {
           this.signalingClient.leaveTopic(actorId, topic);
         }
       }
-    }
+    },
+    ADDREMOTE: (payload: { address: ToAddress, nodeid: any }) => {
+      const add = payload.address
+      const id = payload.nodeid
+      this.createProxyActor(add, id)
+      return true
+    },
   };
 
   async add(address: string): Promise<ToAddress> {
@@ -334,18 +344,35 @@ export class PostalService {
  * @param newActorId The ID of the actor to add to address books
  * @param topic Optional topic - if provided, only update actors in this topic
  */
-  private updateAddressBooks(newActorId: ToAddress, topic?: string): void {
+  private async updateAddressBooks(newActorId: ToAddress, topic?: string): Promise<void> {
     console.log("postalservice", `Updating address books for actor ${newActorId}${topic ? ` in topic ${topic}` : ''}`);
 
     const isNewActorRemote = this.isRemoteActor(newActorId);
     const actorsToUpdate: ToAddress[] = [];
+    
+    // Keep track of which actors we've already processed to avoid duplicates
+    const processedPairs = new Set<string>();
 
     // Find all actors that should be updated
-    PostalService.actors.forEach((actor, actorId) => {
+    PostalService.actors.forEach(async (actor, actorId) => {
       if (actorId === newActorId) return; // Skip the new actor itself
 
       // If topic is specified, only include actors in that topic
       if (topic && !actor.topics.has(topic)) return;
+
+      // Create a unique key for this actor pair to track if we've processed it
+      const pairKey = `${actorId}-${newActorId}`;
+      const reversePairKey = `${newActorId}-${actorId}`;
+      
+      // Skip if we've already processed this pair
+      if (processedPairs.has(pairKey) || processedPairs.has(reversePairKey)) {
+        console.log("postalservice", `Skipping duplicate update for actors ${actorId} and ${newActorId}`);
+        return;
+      }
+      
+      // Mark this pair as processed
+      processedPairs.add(pairKey);
+      processedPairs.add(reversePairKey);
 
       actorsToUpdate.push(actorId as ToAddress);
 
@@ -358,10 +385,18 @@ export class PostalService {
 
       // If the new actor is remote, we need to tell it about our local actors
       if (isNewActorRemote) {
+        const actor = PostalService.actors.get(actorId)
+        const irohAddr = await (actor!.worker as any).getIrohAddr();
+        const node = irohAddr.nodeId
+        if (!node) throw new Error("wut")
+        if (newActorId == actorId) throw new Error("WUT")
         this.PostMessage({
           target: newActorId,
-          type: "ADDCONTACT",
-          payload: actorId
+          type: "ADDCONTACTNODE",
+          payload: {
+            address: actorId,
+            nodeid: node
+          }
         });
       }
 
@@ -429,10 +464,6 @@ export class PostalService {
       // Update address books for all actors 
       this.updateAddressBooks(actorId as ToAddress);
 
-      // Also update address books for each topic this actor is in
-      existingTopics.forEach(topic => {
-        this.updateAddressBooks(actorId as ToAddress, topic);
-      });
     } catch (error) {
       console.error("postalservice", `Failed to create proxy for remote actor ${actorId}:`, error);
     }

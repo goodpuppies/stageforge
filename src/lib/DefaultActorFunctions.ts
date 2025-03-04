@@ -37,6 +37,24 @@ export const functions = {
   },
   ADDCONTACT: (payload: ToAddress) => {
     PostMan.state.addressBook.add(payload);
-    console.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook);
+    console.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+  },
+  ADDCONTACTNODE: async (payload: { address: ToAddress, nodeid: any }) => {
+    console.log("got remote add!")
+    
+    // Only send ADDREMOTE if we haven't already added this address to our address book
+    if (!PostMan.state.addressBook.has(payload.address)) {
+      const a = await PostMan.PostMessage({
+        target: System,
+        type: "ADDREMOTE",
+        payload: payload
+      }, true)
+    
+      PostMan.state.addressBook.add(payload.address);
+      console.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+    } else {
+      console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.address)
+      console.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.address);
+    }
   },
 } as const;
