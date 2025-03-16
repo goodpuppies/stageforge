@@ -21,8 +21,9 @@ export class PostalService {
   public static actors: Map<string, Actor> = new Map();
   public static lastSender: ToAddress | null = null;
   public static testMode = {
-    forceProxyCreation: false // For testing: if true, create proxies for local actors too
+    forceProxyCreation: true // For testing: if true, create proxies for local actors too
   };
+  public static debugMode = false; // Flag to enable debug mode behavior
   private callbackMap: Map<symbol, Signal<any>> = new Map();
   public callback: Signal<any> | null = null;
   worker = null;
@@ -130,7 +131,7 @@ export class PostalService {
 
             //Start listening on the topic
             this.signalingClient.onJoinTopic(topic, (remoteActorId, remoteNodeId) => {
-              console.log("postalservice", `Signaling: Actor ${remoteActorId} joined topic ${topic} with nodeId: ${remoteNodeId || 'local'}`);
+              CustomLogger.log("signaling", `Signaling: Actor ${remoteActorId} joined topic ${topic} with nodeId: ${remoteNodeId || 'local'}`);
 
               // Only handle remote actors that aren't already in our system
               if (remoteNodeId && !PostalService.actors.has(remoteActorId as ToAddress)) {
@@ -143,6 +144,13 @@ export class PostalService {
                 if (newActor) {
                   newActor.topics.add(topic);
                 }
+              } 
+              // Handle local actors from the same process in debug mode
+              else if (PostalService.debugMode && PostalService.actors.has(remoteActorId as ToAddress) && remoteActorId !== actorId) {
+                console.log("postalservice", `Handling local actor ${remoteActorId} in debug mode`);
+                
+                // Update address books to connect local actors
+                this.updateAddressBooks(remoteActorId as ToAddress, topic);
               }
             });
 
@@ -238,7 +246,7 @@ export class PostalService {
   }
 
   OnMessage = (message: Message): void => {
-    CustomLogger.log("postalservice", "postalService handleMessage", message);
+    //CustomLogger.log("postalservice", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
@@ -247,7 +255,11 @@ export class PostalService {
         runFunctions(message, this.functions, this)
       }
       else {
-        if (!PostalService.actors.has(message.address.to)) { throw new Error() }
+        if (!PostalService.actors.has(message.address.to)) {
+          console.error("postal service does not have: ", message.address.to)
+          console.error("fullmsg:", message)
+          throw new Error()
+        }
         (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
@@ -281,70 +293,18 @@ export class PostalService {
       // If this worker was created with node ID, it's a remote actor
       return (actor.worker as any).isRemote === true ||
         (actor.worker as any).constructor.name === 'IrohWebWorker';
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
   /**
-   * Create a proxy for a local actor (for testing purposes)
+   * Update address books for all actors when a new actor is added or joins a topic
+   * @param newActorId The ID of the actor to add to address books
+   * @param topic Optional topic - if provided, only update actors in this topic
+   * @param skipProxyCreation If true, skip creating proxies to avoid recursive calls
    */
-  private async createProxyForLocalActor(actorId: ToAddress): Promise<void> {
-    // Skip if actor doesn't exist
-    if (!PostalService.actors.has(actorId)) {
-      return;
-    }
-
-    // Add a flag to track which actors we've already processed
-    // to avoid infinite recursion
-    const actor = PostalService.actors.get(actorId);
-    if (!actor || (actor as any)._proxyCreated) {
-      return;
-    }
-
-    // Mark this actor as processed
-    (actor as any)._proxyCreated = true;
-
-    // Skip if we can't get nodeId
-    if (typeof (actor.worker as any).getIrohAddr !== 'function') {
-      return;
-    }
-
-    try {
-      // Get the nodeId
-      const irohAddr = await (actor.worker as any).getIrohAddr();
-      if (!irohAddr || !irohAddr.nodeId) {
-        return;
-      }
-
-      const nodeId = irohAddr.nodeId;
-      console.log("postalservice", `Creating test proxy for local actor ${actorId} with nodeId ${nodeId}`);
-
-      // Save topics
-      const existingTopics = actor.topics;
-
-      // Create proxy
-      this.createProxyActor(actorId as string, nodeId);
-
-      // Restore topics
-      const newActor = PostalService.actors.get(actorId);
-      if (newActor) {
-        existingTopics.forEach(topic => newActor.topics.add(topic));
-      }
-
-      console.log("postalservice", `Successfully created test proxy for actor ${actorId}`);
-    } catch (error) {
-      console.error("postalservice", `Failed to create test proxy for actor ${actorId}:`, error);
-    }
-  }
-
-
-  /**
- * Update address books for all actors when a new actor is added or joins a topic
- * @param newActorId The ID of the actor to add to address books
- * @param topic Optional topic - if provided, only update actors in this topic
- */
-  private async updateAddressBooks(newActorId: ToAddress, topic?: string): Promise<void> {
+  private updateAddressBooks(newActorId: ToAddress, topic?: string, skipProxyCreation: boolean = false): Promise<void> {
     console.log("postalservice", `Updating address books for actor ${newActorId}${topic ? ` in topic ${topic}` : ''}`);
 
     const isNewActorRemote = this.isRemoteActor(newActorId);
@@ -352,13 +312,49 @@ export class PostalService {
     
     // Keep track of which actors we've already processed to avoid duplicates
     const processedPairs = new Set<string>();
+    
+    // Get the new actor to check its topics
+    const newActor = PostalService.actors.get(newActorId);
+    const newActorTopics = newActor ? Array.from(newActor.topics) : [];
+    
+    console.log("postalservice", `Actor ${newActorId} has topics: [${newActorTopics.join(', ')}]`);
 
     // Find all actors that should be updated
-    PostalService.actors.forEach(async (actor, actorId) => {
+    PostalService.actors.forEach((actor, actorId) => {
       if (actorId === newActorId) return; // Skip the new actor itself
 
-      // If topic is specified, only include actors in that topic
-      if (topic && !actor.topics.has(topic)) return;
+      const actorTopics = Array.from(actor.topics);
+      
+      // Determine if actors should be updated based on topics
+      let shouldUpdate = false;
+      let updateReason = "";
+      
+      if (topic) {
+        // If a specific topic is provided, only include actors in that topic
+        shouldUpdate = actor.topics.has(topic);
+        updateReason = shouldUpdate ? 
+          `Actor ${actorId} is in the specified topic ${topic}` : 
+          `Actor ${actorId} is NOT in the specified topic ${topic}`;
+      } else {
+        // Check if actors share any topics - ALWAYS enforce topic boundaries
+        const sharedTopics = actorTopics.filter(t => newActorTopics.includes(t));
+        
+        if (sharedTopics.length > 0) {
+          shouldUpdate = true;
+          updateReason = `Actor ${actorId} shares topics with ${newActorId}: [${sharedTopics.join(', ')}]`;
+        } else {
+          shouldUpdate = false;
+          updateReason = `Actor ${actorId} does not share any topics with ${newActorId}`;
+        }
+      }
+      
+      // Debug logging to help understand what's happening
+      //console.log("postalservice", `Should update ${actorId}? ${shouldUpdate}. Reason: ${updateReason}`);
+      
+      // Skip actors that don't meet our update criteria
+      if (!shouldUpdate) {
+        return;
+      }
 
       // Create a unique key for this actor pair to track if we've processed it
       const pairKey = `${actorId}-${newActorId}`;
@@ -385,24 +381,36 @@ export class PostalService {
 
       // If the new actor is remote, we need to tell it about our local actors
       if (isNewActorRemote) {
-        const actor = PostalService.actors.get(actorId)
-        const irohAddr = await (actor!.worker as any).getIrohAddr();
-        const node = irohAddr.nodeId
-        if (!node) throw new Error("wut")
-        if (newActorId == actorId) throw new Error("WUT")
-        this.PostMessage({
-          target: newActorId,
-          type: "ADDCONTACTNODE",
-          payload: {
-            address: actorId,
-            nodeid: node
-          }
-        });
+        const actor = PostalService.actors.get(actorId);
+        if (!actor) return;
+        
+        try {
+          const irohAddr = (actor.worker as any).getIrohAddr();
+          if (!irohAddr || !irohAddr.nodeId) return;
+          
+          const node = irohAddr.nodeId;
+          if (!node) throw new Error("NodeId not available");
+          if (newActorId == actorId) throw new Error("Cannot add self as remote");
+          
+          this.PostMessage({
+            target: newActorId,
+            type: "ADDCONTACTNODE",
+            payload: {
+              address: actorId,
+              nodeid: node
+            }
+          });
+        } catch (error) {
+          console.error("postalservice", `Failed to add remote contact for ${actorId}:`, error);
+        }
       }
 
       // Check if we need to create a proxy for the existing actor
-      if (PostalService.testMode.forceProxyCreation) {
-        this.createProxyForLocalActor(actorId as ToAddress);
+      // Only do this if we're not in a recursive proxy creation call
+      if (!skipProxyCreation && PostalService.debugMode && PostalService.testMode.forceProxyCreation && actor.topics.size > 0) {
+        this.createProxyForLocalActor(actorId as ToAddress).catch(error => {
+          console.error("postalservice", `Failed to create proxy for actor ${actorId}:`, error);
+        });
       }
     });
 
@@ -419,11 +427,18 @@ export class PostalService {
     }
 
     // Check if we need to create a proxy for the new actor
-    if (PostalService.testMode.forceProxyCreation) {
-      this.createProxyForLocalActor(newActorId);
+    // Only do this if we're not in a recursive proxy creation call
+    if (!skipProxyCreation && PostalService.debugMode && PostalService.testMode.forceProxyCreation && newActor && newActor.topics.size > 0) {
+      return this.createProxyForLocalActor(newActorId).then(() => {
+        CustomLogger.log("postalservice", `Updated ${actorsToUpdate.length} address books with actor ${newActorId}`);
+      }).catch(error => {
+        console.error("postalservice", `Failed to create proxy for new actor ${newActorId}:`, error);
+        CustomLogger.log("postalservice", `Updated ${actorsToUpdate.length} address books with actor ${newActorId}`);
+      });
     }
 
     CustomLogger.log("postalservice", `Updated ${actorsToUpdate.length} address books with actor ${newActorId}`);
+    return Promise.resolve();
   }
 
   /**
@@ -461,11 +476,67 @@ export class PostalService {
 
       console.log("postalservice", `Successfully created proxy for remote actor ${actorId}`);
 
-      // Update address books for all actors 
-      this.updateAddressBooks(actorId as ToAddress);
+      // Update address books for all actors but skip further proxy creation to avoid recursion
+      this.updateAddressBooks(actorId as ToAddress, undefined, true);
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("postalservice", `Failed to create proxy for remote actor ${actorId}:`, error);
+      throw new Error(`Failed to create proxy for remote actor ${actorId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Create a proxy for a local actor (for testing purposes)
+   */
+  private async createProxyForLocalActor(actorId: ToAddress): Promise<void> {
+    // Skip if actor doesn't exist
+    if (!PostalService.actors.has(actorId)) {
+      return;
+    }
+
+    // Add a flag to track which actors we've already processed
+    // to avoid infinite recursion
+    const actor = PostalService.actors.get(actorId);
+    if (!actor || (actor as any)._proxyCreated) {
+      return;
+    }
+
+    // Mark this actor as processed
+    (actor as any)._proxyCreated = true;
+
+    // Skip if we can't get nodeId
+    if (!actor.worker || typeof (actor.worker as any).getIrohAddr !== 'function') {
+      console.log("postalservice", `Cannot create proxy for actor ${actorId}: worker or getIrohAddr method not available`);
+      return;
+    }
+
+    try {
+      // Get the nodeId
+      const irohAddr = await (actor.worker as any).getIrohAddr();
+      if (!irohAddr || !irohAddr.nodeId) {
+        console.log("postalservice", `Cannot create proxy for actor ${actorId}: nodeId not available`);
+        return;
+      }
+
+      const nodeId = irohAddr.nodeId;
+      console.log("postalservice", `Creating test proxy for local actor ${actorId} with nodeId ${nodeId}`);
+
+      // Save topics
+      const existingTopics = actor.topics;
+
+      // Create proxy but don't trigger another round of proxy creation
+      this.createProxyActor(actorId as string, nodeId);
+
+      // Restore topics
+      const newActor = PostalService.actors.get(actorId);
+      if (newActor) {
+        existingTopics.forEach(topic => newActor.topics.add(topic));
+      }
+
+      console.log("postalservice", `Successfully created test proxy for actor ${actorId}`);
+    } catch (error: unknown) {
+      console.error("postalservice", `Failed to create test proxy for actor ${actorId}:`, error);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 }
