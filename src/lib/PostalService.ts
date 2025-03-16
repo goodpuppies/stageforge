@@ -136,13 +136,19 @@ export class PostalService {
               // Only handle remote actors that aren't already in our system
               if (remoteNodeId && !PostalService.actors.has(remoteActorId as ToAddress)) {
                 console.log("postalservice", `Creating proxy for remote actor ${remoteActorId}`);
+                
+                // First create the proxy actor
                 this.createProxyActor(remoteActorId, remoteNodeId);
-
-
-                // Add the topic to the newly created actor # HMM???
+                
+                // Then add the topic to the actor after creation
                 const newActor = PostalService.actors.get(remoteActorId as ToAddress);
                 if (newActor) {
                   newActor.topics.add(topic);
+                  console.log("postalservice", `Added topic ${topic} to remote actor ${remoteActorId}`);
+                  
+                  // Only run updateAddressBooks with the specific topic to ensure it connects
+                  // to the appropriate local actors (those that share this topic)
+                  this.updateAddressBooks(remoteActorId as ToAddress, topic, true);
                 }
               } 
               // Handle local actors from the same process in debug mode
