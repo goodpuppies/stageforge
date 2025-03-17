@@ -22,8 +22,6 @@ export class PostalService {
   public static lastSender: ToAddress | null = null;
   public static debugMode = false;
   private callbackMap: Map<symbol, Signal<any>> = new Map();
-  public callback: Signal<any> | null = null;
-  worker = null;
   private static WorkerClass: WorkerConstructor = Worker;
   private signalingClient: SignalingClient | null = null;
 
@@ -62,13 +60,6 @@ export class PostalService {
       const id = await this.add(payload);
       CustomLogger.log("postalservice", "created actor id: ", id, "sending back to creator")
       return id
-    },
-    CB: (payload: unknown) => {
-      if (!this.callback) {
-        console.log("CB", payload);
-        throw new Error("UNEXPECTED CALLBACK");
-      }
-      this.callback.trigger(payload);
     },
     LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
       CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
@@ -140,18 +131,19 @@ export class PostalService {
         }
       }
     },
-    ADDREMOTE: (payload: { actorId: ToAddress, topic: string, nodeid: string }) => { 
+    ADDREMOTE: (payload: { actorId: ToAddress, topic: string, nodeId: string }) => { 
       const actorid = payload.actorId
       const topic = payload.topic
-      const nodeid = payload.nodeid
+      const nodeid = payload.nodeId
 
       //create remote proxy
       if (!PostalService.actors.has(actorid)) {
-        console.log("postalservice", `Creating proxy for remote actor ${actorid}`);
+        CustomLogger.log("postalservice", `addremote Creating proxy for remote actor ${actorid} ${nodeid}`);
         this.createProxyActor(actorid, nodeid, false);
         const newActor = PostalService.actors.get(actorid as ToAddress);
         if (newActor) { newActor.topics.add(topic); }
       }
+      else { CustomLogger.log("postalservice", `remote already exists`); }
       return true
     }
   };
@@ -212,7 +204,7 @@ export class PostalService {
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
-      if (message.type.startsWith("CB")) { message.type = "CB"; }
+      // Don't modify the message type here anymore - let runFunctions handle it
       if (message.address.to === System) {
         runFunctions(message, this.functions, this)
       }
@@ -289,13 +281,14 @@ export class PostalService {
         // Only handle remote actors that aren't already in our system
         if (remoteNodeId && !PostalService.actors.has(remoteActorId as ToAddress)) {
           //create remote proxy
-          console.log("postalservice", `Creating proxy for remote actor ${remoteActorId}`);
+          CustomLogger.log("postalservice", `signaling: Creating proxy for remote actor ${remoteActorId}`);
           this.createProxyActor(remoteActorId, remoteNodeId, false);
           // Add the topic to the newly created actor
           const newActor = PostalService.actors.get(remoteActorId as ToAddress);
           if (newActor) {
             newActor.topics.add(topic);
           }
+          else throw new Error("failed to add to system")
         }
         //introduce remote actor to all local actors in topic
         PostalService.actors.forEach((actor, actorId) => {
@@ -319,10 +312,6 @@ export class PostalService {
               }
             });
           }
-
-          
-
-
         });
       });
     }
@@ -340,6 +329,8 @@ export class PostalService {
       }
     }
     else {
+
+      if (!nodeId) throw new Error("nodeid undefined")
       //@ts-ignore irohwebworker specific
       const proxyworker = new PostalService.WorkerClass({ nodeId }) as Worker;
       // Create an Actor object

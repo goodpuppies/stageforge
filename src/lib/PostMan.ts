@@ -23,7 +23,6 @@ export class PostMan {
   private static addressBook: Set<string>;
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
-  static callback: Signal<unknown>;
   static state: BaseState;
 
   constructor(

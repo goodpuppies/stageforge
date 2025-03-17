@@ -22,14 +22,6 @@ export const functions = {
     PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
     CustomLogger.log("postman", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
-  CB: (payload: unknown) => {
-    if (!PostMan.callback) {
-      console.error("CB", payload);
-      console.error(PostMan.state.id);
-      throw new Error("UNEXPECTED CALLBACK");
-    }
-    PostMan.callback.trigger(payload);
-  },
   //terminate
   SHUT: (_payload: null) => {
     CustomLogger.log("class", "Shutting down...");
@@ -44,16 +36,20 @@ export const functions = {
     
     // Only send ADDREMOTE if we haven't already added this address to our address book
     if (!PostMan.state.addressBook.has(payload.actorId)) {
-      await PostMan.PostMessage({
-        target: System,
-        type: "ADDREMOTE",
-        payload: payload
-      }, true)
-    
-      PostMan.state.addressBook.add(payload.actorId);
-      CustomLogger.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+      try {
+        await PostMan.PostMessage({
+          target: System,
+          type: "ADDREMOTE",
+          payload: payload
+        }, true);
+      
+        PostMan.state.addressBook.add(payload.actorId);
+        CustomLogger.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+      } catch (error) {
+        console.error("Error in ADDCONTACTNODE callback:", error);
+      }
     } else {
-      console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId)
+      console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
       CustomLogger.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
     }
   },
