@@ -49,7 +49,7 @@ export class SignalingClient {
         });
         
         this.ws.addEventListener("message", (event) => {
-          CustomLogger.log("signaling", "Received message:", event.data);
+          CustomLogger.log("signaling", "Received message");
           try {
             const data = JSON.parse(event.data) as SignalingMessage;
             this.handleMessage(data);

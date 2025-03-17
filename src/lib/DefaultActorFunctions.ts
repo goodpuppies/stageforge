@@ -20,12 +20,12 @@ export const functions = {
     });
     // @ts-ignore: get custominit from importer
     PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
-    CustomLogger.log("class", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
+    CustomLogger.log("postman", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   CB: (payload: unknown) => {
     if (!PostMan.callback) {
-      console.log("CB", payload);
-      console.log(PostMan.state.id);
+      console.error("CB", payload);
+      console.error(PostMan.state.id);
       throw new Error("UNEXPECTED CALLBACK");
     }
     PostMan.callback.trigger(payload);
@@ -37,7 +37,7 @@ export const functions = {
   },
   ADDCONTACT: (payload: ToAddress) => {
     PostMan.state.addressBook.add(payload);
-    console.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+    CustomLogger.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
   },
   ADDCONTACTNODE: async (payload: { address: ToAddress, nodeid: any }) => {
     console.log("got remote add!")
@@ -51,10 +51,10 @@ export const functions = {
       }, true)
     
       PostMan.state.addressBook.add(payload.address);
-      console.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+      CustomLogger.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
     } else {
       console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.address)
-      console.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.address);
+      CustomLogger.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.address);
     }
   },
 } as const;
