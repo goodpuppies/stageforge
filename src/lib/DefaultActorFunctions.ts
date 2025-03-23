@@ -20,7 +20,7 @@ export const functions = {
     });
     // @ts-ignore: get custominit from importer
     PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
-    CustomLogger.log("postman", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
+    CustomLogger.log("postmanCreate", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   //terminate
   SHUT: (_payload: null) => {
@@ -29,10 +29,9 @@ export const functions = {
   },
   ADDCONTACT: (payload: ToAddress) => {
     PostMan.state.addressBook.add(payload);
-    CustomLogger.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+    CustomLogger.log("postmanNetwork", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
   },
   ADDCONTACTNODE: async (payload: { actorId: ToAddress, topic: string, nodeid: string,  }) => {
-    console.log("got remote add!")
     
     // Only send ADDREMOTE if we haven't already added this address to our address book
     if (!PostMan.state.addressBook.has(payload.actorId)) {
@@ -44,7 +43,7 @@ export const functions = {
         }, true);
       
         PostMan.state.addressBook.add(payload.actorId);
-        CustomLogger.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+        CustomLogger.log("postmanNetwork", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
       } catch (error) {
         console.error("Error in ADDCONTACTNODE callback:", error);
       }

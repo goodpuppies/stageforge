@@ -58,7 +58,7 @@ export class PostalService {
   public functions: GenericActorFunctions = {
     CREATE: async (payload: string) => {
       const id = await this.add(payload);
-      CustomLogger.log("postalservice", "created actor id: ", id, "sending back to creator")
+      CustomLogger.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
     LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
@@ -96,7 +96,7 @@ export class PostalService {
           console.log("postalservice", `Actor ${actorId} already subscribed to topic: ${topic}`);
           return;
         }
-        console.log("postalservice", `Actor ${actorId} subscribed to topic: ${topic}`);
+        CustomLogger.log("signaling", `Actor ${actorId} subscribed to topic: ${topic}`);
 
         actor.topics.add(topic);
         const remoteInfo = await this.getActorRemoteInfo(actorId)
@@ -149,7 +149,7 @@ export class PostalService {
   };
 
   async add(address: string): Promise<ToAddress> {
-    CustomLogger.log("postalservice", "creating", address);
+    CustomLogger.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
     const workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
     const worker: Worker = new PostalService.WorkerClass(
@@ -179,7 +179,7 @@ export class PostalService {
 
     this.callbackMap.delete(callbackKey);
 
-    CustomLogger.log("postalservice", "created", id);
+    CustomLogger.log("postalserviceCreate", "created", id);
 
     // Create an Actor object
     const actor: Actor = {
