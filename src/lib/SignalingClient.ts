@@ -65,8 +65,8 @@ export class SignalingClient {
         });
         
         this.ws.addEventListener("error", (error) => {
-          CustomLogger.log("signaling", "WebSocket error:", error);
-          reject(error);
+          CustomLogger.error("default", "WebSocket error using offline mode");
+          //reject(error);
         });
       } catch (error) {
         CustomLogger.log("signaling", "Error connecting to signaling server:", error);
