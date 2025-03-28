@@ -143,7 +143,7 @@ export class PostalService {
         const newActor = PostalService.actors.get(actorid as ToAddress);
         if (newActor) { newActor.topics.add(topic); }
       }
-      else { CustomLogger.log("postalservice", `remote already exists`); }
+      else { CustomLogger.log("postalserviceDEBUG", `remote already exists`); }
       return true
     }
   };

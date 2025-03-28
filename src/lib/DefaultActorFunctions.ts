@@ -48,8 +48,8 @@ export const functions = {
         console.error("Error in ADDCONTACTNODE callback:", error);
       }
     } else {
-      console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
-      CustomLogger.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
+      //console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
+      CustomLogger.log("postmanDEBUG", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
     }
   },
 } as const;
