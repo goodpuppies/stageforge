@@ -5,7 +5,33 @@ import { Signal, StandardizeAddress } from "./utils.ts";
 // Map to store callbacks by UUID
 const callbackMap = new Map<string, Signal<unknown>>();
 
+function processBigInts(data: any): any {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (typeof data === 'object') {
+    if (data !== null && '__bigint__' in data) {
+      return BigInt(data.__bigint__);
+    }
+
+    if (Array.isArray(data)) {
+      return data.map(item => processBigInts(item));
+    }
+
+    const result: Record<string, any> = {};
+    for (const key in data) {
+      result[key] = processBigInts(data[key]);
+    }
+    return result;
+  }
+
+  return data;
+}
+
 export async function runFunctions(message: Message, functions: GenericActorFunctions, ctx: any) {
+  if (message.payload) {
+    message.payload = processBigInts(message.payload);
+  }
   // Check if this is a callback message
   if (message.type.startsWith("CB:")) {
     // Extract the UUID from the callback message type
