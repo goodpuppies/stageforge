@@ -1,31 +1,37 @@
+export const worker = self as unknown as Worker;
 
-import { ActorWorker } from "./ActorWorker.ts";
+// Strongly typed ActorId with validation at runtime
+export type ActorId = string & { readonly __brand: unique symbol };
 
-
-export const worker = self as unknown as ActorWorker;
-
-
-export type ToAddress = string & { readonly _: unique symbol };
-
-
-
-export interface BaseState {
-  name: string;
-  id: string | ToAddress;
-  addressBook: Set<string>;
+// Function to validate and create ActorId
+export function createActorId(value: string): ActorId {
+  // Validate format: name@uuid
+  if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    throw new Error(`Invalid ActorId format: ${value}. Must be in the format name@uuid`);
+  }
+  return value as ActorId;
 }
 
-export function actorState<T extends {}>(state: T & BaseState): T & BaseState {
-  return state;
+// For backwards compatibility, keep ToAddress as an alias
+export type ToAddress = ActorId;
+
+// Basic state interface with all required properties
+export interface BaseState {
+  name: string;
+  id: ActorId;
+  addressBook: Set<ActorId>;
+}
+
+// Special interface for initializing actors - only name is required
+export interface ActorInit {
+  name: string;
+  [key: string]: any; // Allow any additional properties
 }
 
 export const System = "SYSTEM" as const;
-
 export type SystemType = typeof System;
 
 // Message Address Interfaces
-
-
 export interface SystemCommand {
   fm: typeof System;
   to: string;
@@ -52,15 +58,10 @@ export interface MessageAddressReal {
 }
 
 // Union of all possible message addresses
-export type MessageAddress = MessageAddressSingle | MessageAddressArray;
+export type MessageAddress = MessageAddressSingle | MessageAddressArray | MessageAddressReal;
 
-
-
-
-
-
-
-export type MessageType = GenericMessage
+// Type for message type
+export type MessageType = GenericMessage;
 
 export type ValidateMessageType<T extends string> = T extends MessageType
   ? T
@@ -68,26 +69,10 @@ export type ValidateMessageType<T extends string> = T extends MessageType
   ? never
   : `Invalid message type. Valid types are: ${MessageType extends string ? MessageType : never}`;
 
-
-
-type CBType = `CB:${string}`;
-
-// Then extend Payload to include both regular and callback types
-
-
-
-
-export type tsfile = string
-
-type CallbackType<T extends string> = `CB:${T}`;
-
-
-
-
-
+export type tsfile = string;
 
 export type BaseMessage<K extends MessageType> = {
-  type: any | CallbackType<any>;
+  type: string;
   payload: unknown;
 };
 
@@ -105,8 +90,6 @@ export type TargetedMessage<K extends MessageType> = BaseMessage<K> & {
 export type Message = AddressedMessage<MessageType>;
 export type TargetMessage = TargetedMessage<MessageType>;
 
-
-
 export type GenericMessage = {
   address: {
     fm: string;
@@ -116,22 +99,28 @@ export type GenericMessage = {
   payload: unknown;
 };
 
-type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
+type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
 export type GenericActorFunctions = {
   readonly [key: string]: (payload: any) => AcFnRet;
 };
 
-export type Topic = string
-
+export type Topic = string;
 
 export interface PairAddress {
   fm: string;
-  to: string ;
+  to: string;
 }
+
 export type NonArrayAddress = PairAddress | SystemCommand | WorkerToSystem;
 
 // Type Guard to check if address is not an array
-export function notAddressArray
-(address: Message["address"]): address is NonArrayAddress {
-  return !Array.isArray(address);
+export function notAddressArray(
+  address: Message["address"]
+): address is NonArrayAddress {
+  return !Array.isArray(address.to);
+}
+
+// Helper function to create properly typed actor state
+export function createActorState<T extends Record<string, any>>(data: T & { name: string }): T & BaseState {
+  return data as T & BaseState;
 }

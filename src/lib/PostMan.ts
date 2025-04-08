@@ -1,42 +1,45 @@
-import { Signal } from "./utils.ts";
 import {
-  actorState,
   type GenericActorFunctions,
   type tsfile,
   type BaseState,
   type TargetMessage,
   type Message,
   System,
-  type ToAddress,
+  type ActorId,
+  type ActorInit,
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 
-const xstate = actorState({
-  name: "",
-  id: "",
-  addressBook: new Set(),
-});
-
 export class PostMan {
-  private static addressBook: Set<string>;
+  private static addressBook: Set<ActorId>;
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
   static state: BaseState;
 
   constructor(
-    actorState: Record<string, any>,
+    actorState: ActorInit,
     functions: GenericActorFunctions,
   ) {
-    // Initialize PostMan state
-    PostMan.state = xstate;
-    PostMan.state.name = actorState.name;
-    PostMan.addressBook = PostMan.state.addressBook;
-    
-    // Merge actor state with PostMan state if provided
-    if (actorState) {
-      PostMan.state = { ...PostMan.state, ...actorState };
+    // Check that required properties exist
+    if (!actorState.name) {
+      throw new Error("Actor state must have a name property");
     }
+    
+    // Initialize with system properties
+    const systemProps = {
+      id: "" as ActorId, // Will be set properly during INIT
+      addressBook: new Set<ActorId>(),
+    };
+    
+    // Create a single state object with both system and actor properties
+    // This ensures both actorState and PostMan.state reference the same object
+    Object.assign(actorState, systemProps);
+    
+    // Set PostMan.state to reference the actor's state object
+    // Use type assertion to make TypeScript recognize all properties
+    PostMan.state = actorState as BaseState;
+    PostMan.addressBook = PostMan.state.addressBook;
     
     // Merge functions
     PostMan.functions = { ...PostMan.functions, ...functions };
@@ -47,13 +50,12 @@ export class PostMan {
     };
   }
 
-  static async create(actorname: tsfile | URL): Promise<ToAddress> {
-    //console.log("create", actorname)
+  static async create(actorname: tsfile | URL): Promise<ActorId> {
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
       payload: actorname
-    }, true) as ToAddress
+    }, true) as ActorId
 
     PostMan.addressBook.add(result)
     return result;

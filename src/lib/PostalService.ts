@@ -4,15 +4,22 @@ import {
   type TargetMessage,
   type GenericActorFunctions,
   System,
-  type ToAddress,
-  type Actor,
+  type ActorId,
+  createActorId,
+  type worker,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { CustomLogger } from "../logger/customlogger.ts";
 
+// Define Actor interface with proper types
+interface Actor {
+  worker: Worker;
+  topics: Set<string>;
+}
+
 export class PostalService {
-  public static actors: Map<string, Actor> = new Map();
-  public static lastSender: ToAddress | null = null;
+  public static actors: Map<ActorId, Actor> = new Map();
+  public static lastSender: ActorId | null = null;
   private callbackMap: Map<symbol, Signal<any>> = new Map();
 
   //#region postalservice core
@@ -23,7 +30,7 @@ export class PostalService {
       CustomLogger.log("postalservice", "created actor id: ", id, "sending back to creator")
       return id
     },
-    LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
+    LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
       CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
 
       for (const [key, signal] of this.callbackMap.entries()) {
@@ -36,15 +43,15 @@ export class PostalService {
 
       throw new Error("LOADED message received but no matching callback found");
     },
-    DELETE: (payload: ToAddress) => {
+    DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
     },
-    MURDER: (payload: ToAddress) => {
+    MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
     }
   };
 
-  async add(address: string): Promise<ToAddress> {
+  async add(address: string): Promise<ActorId> {
     CustomLogger.log("postalservice", "creating", address);
     let workerUrl: string;
     if (typeof Deno !== 'undefined') {
@@ -61,7 +68,7 @@ export class PostalService {
 
 
     const callbackKey = Symbol('actor-creation');
-    const actorSignal = new Signal<ToAddress>();
+    const actorSignal = new Signal<ActorId>();
     this.callbackMap.set(callbackKey, actorSignal);
 
     // Send the INIT message with the callback key in the payload
@@ -92,7 +99,7 @@ export class PostalService {
     return id;
   }
 
-  static murder(address: string) {
+  static murder(address: ActorId) {
     const actor = PostalService.actors.get(address);
     if (actor) {
       actor.worker.terminate();
@@ -110,15 +117,15 @@ export class PostalService {
         runFunctions(message, this.functions, this)
       }
       else {
-        if (!PostalService.actors.has(message.address.to)) {
+        if (!PostalService.actors.has(message.address.to as ActorId)) {
           console.error("postal service does not have: ", message.address.to)
           console.error("fullmsg:", message)
           throw new Error("postal service does not have: " + message.address.to)
         }
-        (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
+        (PostalService.actors.get(message.address.to as ActorId)!.worker).postMessage(message);
       }
     });
-    PostalService.lastSender = message.address.fm as ToAddress;
+    PostalService.lastSender = message.address.fm as ActorId;
   };
 
   async PostMessage(

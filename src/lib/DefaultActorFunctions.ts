@@ -1,5 +1,5 @@
 import { PostMan } from "./PostMan.ts";
-import { System, type ToAddress } from "./types.ts";
+import { System, type ActorId, createActorId } from "./types.ts";
 import { CustomLogger } from "../logger/customlogger.ts";
 
 
@@ -8,13 +8,16 @@ import { CustomLogger } from "../logger/customlogger.ts";
 export const functions = {
   //initialize actor
   INIT: (payload: { callbackKey: string, originalPayload: string | null } | null) => {
-    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}` as ToAddress;
+    // Generate a properly formatted ActorId
+    const rawId = `${PostMan.state?.name}@${crypto.randomUUID()}`;
+    PostMan.state.id = createActorId(rawId);
+    
     const callbackKey = payload?.callbackKey || '';
     PostMan.PostMessage({
       address: { fm: PostMan.state.id, to: System },
       type: "LOADED",
       payload: {
-        actorId: PostMan.state.id as ToAddress,
+        actorId: PostMan.state.id,
         callbackKey
       },
     });
@@ -27,11 +30,11 @@ export const functions = {
     CustomLogger.log("class", "Shutting down...");
     PostMan.worker.terminate();
   },
-  ADDCONTACT: (payload: ToAddress) => {
+  ADDCONTACT: (payload: ActorId) => {
     PostMan.state.addressBook.add(payload);
     CustomLogger.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
   },
-  ADDCONTACTNODE: async (payload: { actorId: ToAddress, topic: string, nodeid: string,  }) => {
+  ADDCONTACTNODE: async (payload: { actorId: ActorId, topic: string, nodeid: string,  }) => {
     console.log("got remote add!")
     
     // Only send ADDREMOTE if we haven't already added this address to our address book
