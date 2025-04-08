@@ -5,15 +5,17 @@ import {
   type GenericActorFunctions,
   System,
   type ToAddress,
+  type Actor,
 } from "./types.ts";
-import { CustomLogger } from "../logger/customlogger.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
+import { CustomLogger } from "../logger/customlogger.ts";
 
 export class PostalService {
-  public static actors: Map<string, Worker> = new Map();
-  public callback: Signal<unknown> | null = null;
-  static initSignal: Signal<ToAddress>;
-  worker = null
+  public static actors: Map<string, Actor> = new Map();
+  public static lastSender: ToAddress | null = null;
+  private callbackMap: Map<symbol, Signal<any>> = new Map();
+
+  //#region postalservice core
 
   public functions: GenericActorFunctions = {
     CREATE: async (payload: string) => {
@@ -21,16 +23,18 @@ export class PostalService {
       CustomLogger.log("postalservice", "created actor id: ", id, "sending back to creator")
       return id
     },
-    CB: (payload: unknown) => {
-      if (!this.callback) {
-        console.log("CB", payload);
-        throw new Error("UNEXPECTED CALLBACK");
+    LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
+      CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
+
+      for (const [key, signal] of this.callbackMap.entries()) {
+        if (key.toString() === payload.callbackKey) {
+
+          signal.trigger(payload.actorId);
+          return;
+        }
       }
-      this.callback.trigger(payload);
-    },
-    LOADED: (payload: ToAddress) => {
-      CustomLogger.log("postalservice", "new actor loaded, id: ", payload)
-      PostalService.initSignal.trigger(payload);
+
+      throw new Error("LOADED message received but no matching callback found");
     },
     DELETE: (payload: ToAddress) => {
       PostalService.actors.delete(payload);
@@ -55,42 +59,66 @@ export class PostalService {
     );
     worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
 
-    //#region init sig
-    PostalService.initSignal = new Signal<ToAddress>();
+
+    const callbackKey = Symbol('actor-creation');
+    const actorSignal = new Signal<ToAddress>();
+    this.callbackMap.set(callbackKey, actorSignal);
+
+    // Send the INIT message with the callback key in the payload
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
-      payload: null,
+      payload: {
+        callbackKey: callbackKey.toString(),
+        originalPayload: null
+      },
     });
-    const id = await PostalService.initSignal.wait();
-    //#endregion
+
+
+    const id = await actorSignal.wait();
+
+
+    this.callbackMap.delete(callbackKey);
+
     CustomLogger.log("postalservice", "created", id);
-    PostalService.actors.set(id, worker);
+
+    // Create an Actor object
+    const actor: Actor = {
+      worker,
+      topics: new Set<string>()
+    };
+
+    PostalService.actors.set(id, actor);
     return id;
   }
 
   static murder(address: string) {
-    const worker = PostalService.actors.get(address);
-    if (worker) {
-      worker.terminate();
+    const actor = PostalService.actors.get(address);
+    if (actor) {
+      actor.worker.terminate();
       PostalService.actors.delete(address);
     }
   }
 
-  OnMessage = (message: Message) : void =>  {
-    CustomLogger.log("postalservice", "postalService handleMessage", message);
+  OnMessage = (message: Message): void => {
+    //CustomLogger.log("postalservice", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
-      if (message.type.startsWith("CB")) { message.type = "CB"; }
+      // Don't modify the message type here anymore - let runFunctions handle it
       if (message.address.to === System) {
         runFunctions(message, this.functions, this)
       }
       else {
-        if (!PostalService.actors.has(message.address.to)) { throw new Error() }
-        (PostalService.actors.get(message.address.to)!).postMessage(message);
+        if (!PostalService.actors.has(message.address.to)) {
+          console.error("postal service does not have: ", message.address.to)
+          console.error("fullmsg:", message)
+          throw new Error("postal service does not have: " + message.address.to)
+        }
+        (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
+    PostalService.lastSender = message.address.fm as ToAddress;
   };
 
   async PostMessage(
@@ -105,6 +133,8 @@ export class PostalService {
     message: TargetMessage | Message,
     cb?: boolean
   ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this)
+    return await PostMessage(message, cb, this);
   }
+
+  //#endregion
 }

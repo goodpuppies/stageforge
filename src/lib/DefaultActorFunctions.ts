@@ -7,24 +7,20 @@ import { CustomLogger } from "../logger/customlogger.ts";
 
 export const functions = {
   //initialize actor
-  INIT: (payload: string | null) => {
-    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}`;
+  INIT: (payload: { callbackKey: string, originalPayload: string | null } | null) => {
+    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}` as ToAddress;
+    const callbackKey = payload?.callbackKey || '';
     PostMan.PostMessage({
       address: { fm: PostMan.state.id, to: System },
       type: "LOADED",
-      payload: PostMan.state.id as ToAddress,
+      payload: {
+        actorId: PostMan.state.id as ToAddress,
+        callbackKey
+      },
     });
     // @ts-ignore: get custominit from importer
-    PostMan.functions.CUSTOMINIT?.(null, PostMan.state.id);
-    CustomLogger.log("class", `initied ${PostMan.state.id} actor with args:`, payload);
-  },
-  CB: (payload: unknown) => {
-    if (!PostMan.callback) {
-      console.log("CB", payload);
-      console.log(PostMan.state.id);
-      throw new Error("UNEXPECTED CALLBACK");
-    }
-    PostMan.callback.trigger(payload);
+    PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
+    CustomLogger.log("postman", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   //terminate
   SHUT: (_payload: null) => {
@@ -33,6 +29,28 @@ export const functions = {
   },
   ADDCONTACT: (payload: ToAddress) => {
     PostMan.state.addressBook.add(payload);
-    console.log("book", PostMan.state.addressBook);
+    CustomLogger.log("postman", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+  },
+  ADDCONTACTNODE: async (payload: { actorId: ToAddress, topic: string, nodeid: string,  }) => {
+    console.log("got remote add!")
+    
+    // Only send ADDREMOTE if we haven't already added this address to our address book
+    if (!PostMan.state.addressBook.has(payload.actorId)) {
+      try {
+        await PostMan.PostMessage({
+          target: System,
+          type: "ADDREMOTE",
+          payload: payload
+        }, true);
+      
+        PostMan.state.addressBook.add(payload.actorId);
+        CustomLogger.log("postman", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+      } catch (error) {
+        console.error("Error in ADDCONTACTNODE callback:", error);
+      }
+    } else {
+      console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
+      CustomLogger.log("postman", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
+    }
   },
 } as const;

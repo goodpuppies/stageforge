@@ -22,7 +22,6 @@ export class PostMan {
   private static addressBook: Set<string>;
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
-  static callback: Signal<unknown>;
   static state: BaseState;
 
   constructor(
@@ -38,7 +37,8 @@ export class PostMan {
     };
   }
 
-  static async create(actorname: tsfile|URL): Promise<ToAddress> {
+  static async create(actorname: tsfile | URL): Promise<ToAddress> {
+    //console.log("create", actorname)
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
@@ -61,6 +61,6 @@ export class PostMan {
     message: TargetMessage | Message,
     cb?: boolean
   ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this)
+    return await PostMessage(message, cb, this);
   }
 }
