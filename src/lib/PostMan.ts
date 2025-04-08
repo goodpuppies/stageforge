@@ -18,7 +18,7 @@ export class PostMan {
   static state: BaseState;
 
   constructor(
-    actorState: ActorInit,
+    actorState: ActorInit & { id?: ActorId },
     functions: GenericActorFunctions,
   ) {
     // Check that required properties exist

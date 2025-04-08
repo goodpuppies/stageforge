@@ -1,11 +1,9 @@
-import { BaseState } from "../../src/lib/types.ts";
 import { PostMan } from "../../src/mod.ts";
 
-// TypeScript hack: Use declaration merging to augment the state object type
-// This allows us to use a simple state object while telling TypeScript about system properties
+// Simple state object without explicit type annotations
 const state = {
   name: "main" as string,
-} 
+};
 
 new PostMan(state, {
   CUSTOMINIT: (payload: string) => {

@@ -15,16 +15,19 @@ export function createActorId(value: string): ActorId {
 // For backwards compatibility, keep ToAddress as an alias
 export type ToAddress = ActorId;
 
-// Basic state interface with all required properties
+// Basic state interface with all required properties for internal use
 export interface BaseState {
   name: string;
   id: ActorId;
   addressBook: Set<ActorId>;
+  [key: string]: any; // Allow any additional properties
 }
 
-// Special interface for initializing actors - only name is required
+// Interface for actor state initialization - only name is required
 export interface ActorInit {
   name: string;
+  id?: ActorId;
+  addressBook?: Set<ActorId>;
   [key: string]: any; // Allow any additional properties
 }
 
@@ -51,10 +54,10 @@ export interface MessageAddressArray {
   to: string | string[];
 }
 
-// Real message address with ToAddress
+// Real message address with ActorId
 export interface MessageAddressReal {
   fm: string;
-  to: ToAddress;
+  to: ActorId;
 }
 
 // Union of all possible message addresses
@@ -79,12 +82,12 @@ export type BaseMessage<K extends MessageType> = {
 export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
   address: {
     fm: string;
-    to: string | string[] | ToAddress;
+    to: string | string[] | ActorId;
   };
 };
 
 export type TargetedMessage<K extends MessageType> = BaseMessage<K> & {
-  target: string | string[];
+  target: string | string[] | ActorId;
 };
 
 export type Message = AddressedMessage<MessageType>;
