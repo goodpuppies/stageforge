@@ -49,7 +49,7 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
     // Execute the function
     const ret = await functions[baseType]?.(message.payload);
     
-    if (ret && baseType !== "CB") {
+    if (ret !== undefined && baseType !== "CB") {
       // If we have a callbackId, use it in the response
       const cbType = callbackId ? `CB:${baseType}:${callbackId}` : `CB:${baseType}`;
       

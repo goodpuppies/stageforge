@@ -4,7 +4,7 @@ const state = {
   name: "main",
 };
 
-new PostMan(state.name, {
+new PostMan(state, {
   CUSTOMINIT: (payload: string) => {
     main(payload);
   },
@@ -20,12 +20,6 @@ async function main(_payload: string) {
 
   const sub = await PostMan.create("./actors/sub.ts")
   const sub2 = await PostMan.create("./actors/sub.ts")
-
-  PostMan.PostMessage({
-    target: sub2,
-    type: "CHANGENAME",
-    payload: "sub2"
-  })
 
   PostMan.PostMessage({
     target: [sub, sub2],

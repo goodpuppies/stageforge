@@ -25,13 +25,23 @@ export class PostMan {
   static state: BaseState;
 
   constructor(
-    name: string,
-    functions: GenericActorFunctions
+    actorState: Record<string, any>,
+    functions: GenericActorFunctions,
   ) {
+    // Initialize PostMan state
     PostMan.state = xstate;
-    PostMan.state.name = name;
+    PostMan.state.name = actorState.name;
     PostMan.addressBook = PostMan.state.addressBook;
+    
+    // Merge actor state with PostMan state if provided
+    if (actorState) {
+      PostMan.state = { ...PostMan.state, ...actorState };
+    }
+    
+    // Merge functions
     PostMan.functions = { ...PostMan.functions, ...functions };
+    
+    // Set up message handler
     PostMan.worker.onmessage = (event: MessageEvent) => {
       runFunctions(event.data, PostMan.functions, PostMan)
     };
