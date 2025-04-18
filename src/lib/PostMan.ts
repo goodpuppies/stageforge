@@ -48,12 +48,23 @@ export class PostMan {
     };
   }
 
-  static async create(actorname: tsfile | URL): Promise<ToAddress> {
+  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ToAddress> {
     //console.log("create", actorname)
+    interface payload {
+      actorname: tsfile | URL;
+      base?: tsfile | URL
+    }
+    let payload: payload
+    if (base) {
+      payload = { actorname, base }
+    }
+    else {
+      payload = {actorname}
+    }
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
-      payload: actorname
+      payload: payload
     }, true) as ToAddress
 
     PostMan.addressBook.add(result)

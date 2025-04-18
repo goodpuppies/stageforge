@@ -16,7 +16,10 @@ export type WorkerConstructor = new (
   scriptURL: string | URL,
   options?: WorkerOptions
 ) => Worker;
-
+interface custompayload {
+  actorname: string;
+  base?: string | URL
+}
 export class PostalService {
   public static actors: Map<string, Actor> = new Map();
   public static lastSender: ToAddress | null = null;
@@ -56,8 +59,10 @@ export class PostalService {
   //#region postalservice core
 
   public functions: GenericActorFunctions = {
-    CREATE: async (payload: string) => {
-      const id = await this.add(payload);
+
+    CREATE: async (payload: custompayload ) => {
+
+      const id = await this.add(payload.actorname, payload.base);
       CustomLogger.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
@@ -148,10 +153,10 @@ export class PostalService {
     }
   };
 
-  async add(address: string): Promise<ToAddress> {
+  async add(address: string, base?: string | URL): Promise<ToAddress> {
     CustomLogger.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
-    const workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
+    const workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
     const worker: Worker = new PostalService.WorkerClass(
       workerUrl,
       { name: address, type: "module" }
