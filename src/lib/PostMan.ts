@@ -1,45 +1,29 @@
-import { Signal } from "./utils.ts";
 import {
-  actorState,
   type GenericActorFunctions,
   type tsfile,
   type BaseState,
-  type TargetMessage,
-  type Message,
+  type MessageFrom,
+  type ReturnFrom,
   System,
-  type ToAddress,
+  type ActorId,
+  createTopicName
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 
-const xstate = actorState({
-  name: "",
-  id: "",
-  addressBook: new Set(),
-  topics: new Set(),
-});
-
 export class PostMan {
-  private static addressBook: Set<string>;
+  private static addressBook: Set<ActorId>;
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
-  static state: BaseState;
+  private static state: BaseState;
 
   constructor(
-    actorState: Record<string, any>,
+    actorState: Record<string, any> & BaseState,
     functions: GenericActorFunctions,
   ) {
-    // Initialize PostMan state
-    PostMan.state = xstate;
+    PostMan.state = actorState;
     PostMan.state.name = actorState.name;
-    PostMan.addressBook = PostMan.state.addressBook;
-    
-    // Merge actor state with PostMan state if provided
-    if (actorState) {
-      PostMan.state = { ...PostMan.state, ...actorState };
-    }
-    
-    // Merge functions
+    PostMan.addressBook = actorState.addressBook;
     PostMan.functions = { ...PostMan.functions, ...functions };
     
     // Set up message handler
@@ -48,7 +32,8 @@ export class PostMan {
     };
   }
 
-  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ToAddress> {
+
+  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ActorId> {
     //console.log("create", actorname)
     interface payload {
       actorname: tsfile | URL;
@@ -65,7 +50,7 @@ export class PostMan {
       target: System,
       type: "CREATE",
       payload: payload
-    }, true) as ToAddress
+    }, true) as ActorId
 
     PostMan.addressBook.add(result)
     return result;
@@ -74,33 +59,36 @@ export class PostMan {
   static setTopic(topic: string) {
     PostMan.PostMessage({
       target: System,
-      type: "SET_TOPIC",
-      payload: topic
+      type: "TOPICUPDATE",
+      payload: {
+        delete: false,
+        name: topic
+      }
     })
-    PostMan.state.topics.add(topic)
+    PostMan.state.topics.add(createTopicName(topic))
   }
-
   static delTopic(topic: string) {
     PostMan.PostMessage({
       target: System,
-      type: "DEL_TOPIC",
-      payload: topic
+      type: "TOPICUPDATE",
+      payload: {
+        delete: true,
+        name: topic
+      }
     })
-    PostMan.state.topics.delete(topic)
+    PostMan.state.topics.delete(createTopicName(topic))
   }
 
-  static PostMessage(
-    message: TargetMessage | Message,
-    cb: true
-  ): Promise<unknown>;
-  static PostMessage(
-    message: TargetMessage | Message,
-    cb?: false
-  ): void;
-  static async PostMessage(
-    message: TargetMessage | Message,
-    cb?: boolean
-  ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this);
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb?: false | undefined): void;
+  // Implementation
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb?: boolean): any {
+    return PostMessage(message as any, cb, this);
   }
 }

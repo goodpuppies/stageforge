@@ -1,6 +1,6 @@
 import { PostMan } from "./PostMan.ts";
-import { System, type ToAddress } from "./types.ts";
-import { CustomLogger } from "../logger/customlogger.ts";
+import { System, type ActorId, createActorId, type TopicName } from "./types.ts";
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
 
 
 //default actor functions
@@ -8,32 +8,46 @@ import { CustomLogger } from "../logger/customlogger.ts";
 export const functions = {
   //initialize actor
   INIT: (payload: { callbackKey: string, originalPayload: string | null } | null) => {
-    PostMan.state.id = `${PostMan.state.name}@${crypto.randomUUID()}` as ToAddress;
+    //@ts-expect-error PostMan.state is internal
+    const rawId = `${PostMan.state?.name}@${crypto.randomUUID()}`;
+    //@ts-expect-error PostMan.state is internal
+    PostMan.state.id = createActorId(rawId);
     const callbackKey = payload?.callbackKey || '';
     PostMan.PostMessage({
+      //@ts-expect-error PostMan.state is internal
       address: { fm: PostMan.state.id, to: System },
       type: "LOADED",
       payload: {
-        actorId: PostMan.state.id as ToAddress,
+        //@ts-expect-error PostMan.state is internal
+        actorId: PostMan.state.id,
         callbackKey
       },
     });
     // @ts-ignore: get custominit from importer
-    PostMan.functions.CUSTOMINIT?.(payload?.originalPayload || null, PostMan.state.id);
-    CustomLogger.log("postmanCreate", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
+    PostMan.functions.__INIT__?.(payload?.originalPayload || null, PostMan.state.id);
+    //@ts-expect-error PostMan.state is internal
+    LogChannel.log("postmanCreate", `initialized ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   //terminate
   SHUT: (_payload: null) => {
-    CustomLogger.log("class", "Shutting down...");
+    LogChannel.log("postman", "Shutting down...");
     PostMan.worker.terminate();
   },
-  ADDCONTACT: (payload: ToAddress) => {
+  ADDCONTACT: (payload: ActorId) => {
+    //@ts-expect-error PostMan.state is internal
     PostMan.state.addressBook.add(payload);
-    CustomLogger.log("postmanNetwork", "contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+    //@ts-expect-error PostMan.state is internal
+    LogChannel.log("postmanNetwork", "topic contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
   },
-  ADDCONTACTNODE: async (payload: { actorId: ToAddress, topic: string, nodeid: string,  }) => {
-    
+  REMOVECONTACT: (payload: ActorId) => {
+    //@ts-expect-error PostMan.state is internal
+    PostMan.state.addressBook.delete(payload);
+    //@ts-expect-error PostMan.state is internal
+    LogChannel.log("postmanNetwork", "contact DEL, removed to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+  },
+  ADDCONTACTNODE: async (payload: { actorId: ActorId, topic: TopicName, nodeid: string,  }) => {
     // Only send ADDREMOTE if we haven't already added this address to our address book
+    //@ts-expect-error PostMan.state is internal
     if (!PostMan.state.addressBook.has(payload.actorId)) {
       try {
         await PostMan.PostMessage({
@@ -41,15 +55,16 @@ export const functions = {
           type: "ADDREMOTE",
           payload: payload
         }, true);
-      
+        //@ts-expect-error PostMan.state is internal
         PostMan.state.addressBook.add(payload.actorId);
-        CustomLogger.log("postmanNetwork", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
+        //@ts-expect-error PostMan.state is internal
+        LogChannel.log("postmanNetwork", "remote contact intro, added to addressbook", PostMan.state.addressBook, "inside", PostMan.state.id);
       } catch (error) {
         console.error("Error in ADDCONTACTNODE callback:", error);
       }
     } else {
       //console.warn("WARN Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
-      CustomLogger.log("postmanDEBUG", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
+      LogChannel.log("postmanDEBUG", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
     }
   },
 } as const;

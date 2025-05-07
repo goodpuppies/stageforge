@@ -1,15 +1,19 @@
-import { Signal } from "./utils.ts";
+import { Signal } from "./Signal.ts";
 import {
   type Message,
-  type TargetMessage,
+  type MessageFrom,
+  type ReturnFrom,
   type GenericActorFunctions,
   System,
-  type ToAddress,
-  type Actor,
+  type TopicName,
+  type ActorId,
+  type ActorW,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
-import { CustomLogger } from "../logger/customlogger.ts";
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { SignalingClient } from "./SignalingClient.ts";
+import type { functions as defaultActorApi } from "./DefaultActorFunctions.ts"
+
 
 // Worker constructor type that matches the standard Worker constructor
 export type WorkerConstructor = new (
@@ -20,10 +24,13 @@ interface custompayload {
   actorname: string;
   base?: string | URL
 }
+
+
 export class PostalService {
-  public static actors: Map<string, Actor> = new Map();
-  public static lastSender: ToAddress | null = null;
+  public static actors: Map<ActorId, ActorW> = new Map();
+  public static lastSender: ActorId | null = null;
   public static debugMode = false;
+  private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
   private callbackMap: Map<symbol, Signal<any>> = new Map();
   private static WorkerClass: WorkerConstructor = Worker;
   private signalingClient: SignalingClient | null = null;
@@ -32,24 +39,23 @@ export class PostalService {
   constructor(customWorkerClass?: WorkerConstructor) {
     if (customWorkerClass) {
       PostalService.WorkerClass = customWorkerClass;
-      CustomLogger.log("postalservice", "Using custom Worker implementation");
+      LogChannel.log("postalservice", "Using custom Worker implementation");
     }
   }
-
   //#region signaling
   /**
    * Initialize the signaling client
    * @param serverUrl The WebSocket URL of the signaling server
    */
   initSignalingClient(serverUrl: string): void {
-    CustomLogger.log("initSignalingClient", serverUrl);
+    LogChannel.log("initSignalingClient", serverUrl);
     this.signalingClient = new SignalingClient(serverUrl);
 
     // Connect to the signaling server
     try {
       this.signalingClient.connect();
     } catch (error) {
-      CustomLogger.log("postalservice", "Failed to connect to signaling server:", error);
+      LogChannel.log("postalservice", "Failed to connect to signaling server:", error);
     }
   }
 
@@ -63,11 +69,11 @@ export class PostalService {
     CREATE: async (payload: custompayload ) => {
 
       const id = await this.add(payload.actorname, payload.base);
-      CustomLogger.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
+      LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
-    LOADED: (payload: { actorId: ToAddress, callbackKey: string }) => {
-      CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
+    LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
+      LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
 
       for (const [key, signal] of this.callbackMap.entries()) {
         if (key.toString() === payload.callbackKey) {
@@ -79,124 +85,105 @@ export class PostalService {
 
       throw new Error("LOADED message received but no matching callback found");
     },
-    DELETE: (payload: ToAddress) => {
+    DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
     },
-    MURDER: (payload: ToAddress) => {
+    MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
     },
-    SET_TOPIC: async (payload: string) => {
-      const topic = payload;
+    TOPICUPDATE: async (payload: { delete: boolean; name: TopicName }) => {
+      const delmode = payload.delete;
+      const topic = payload.name;
 
-      //#region get actor please refactor
-      // The actor ID is the sender of the message BAD CODE!!
-      const actorId = PostalService.lastSender as ToAddress;
-      if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
-      const actor = PostalService.actors.get(actorId);
-      //#endregion
+      // Identify the actor performing the update
+      const actorId = PostalService.lastSender as ActorId;
+      if (!actorId) throw new Error("Cannot update topic: sender ID unknown");
 
-      if (actor) {
-        // Skip if the actor is already in this topic
-        if (actor.topics.has(topic)) {
-          console.log("postalservice", `Actor ${actorId} already subscribed to topic: ${topic}`);
-          return;
-        }
-        CustomLogger.log("signaling", `Actor ${actorId} subscribed to topic: ${topic}`);
-
-        actor.topics.add(topic);
-        const remoteInfo = await this.getActorRemoteInfo(actorId)
-        const nodeId = remoteInfo.nodeId;
-        if (!nodeId) throw new Error("Cannot subscribe to topic: nodeId unknown");
-
-        if (PostalService.debugMode) {
-          CustomLogger.log("postalservice", `DEBUG: creating proxy for local actor ${actorId}`)
-          this.createProxyActor(actorId, nodeId, true)
-        }
-        this.signalingRegister(actorId, topic, nodeId);
-      }
-    },
-    DEL_TOPIC: (payload: string) => {
-      // The payload is just the topic string
-      const topic = payload;
-      // The actor ID is the sender of the message
-      const actorId = PostalService.lastSender as ToAddress;
-
-      if (!actorId) {
-        throw new Error("Cannot delete topic: sender ID unknown");
-      }
-
-      const actor = PostalService.actors.get(actorId);
-      if (actor) {
-        actor.topics.delete(topic);
-        CustomLogger.log("postalservice", `Actor ${actorId} unsubscribed from topic: ${topic}`);
-
-        // Unregister from the signaling server if available
+      // Update the registry and optionally handle signaling
+      if (delmode) {
+        PostalService.topicRegistry.get(topic)?.delete(actorId);
         if (this.signalingClient) {
           this.signalingClient.leaveTopic(actorId, topic);
         }
+      } else {
+        if (!PostalService.topicRegistry.has(topic)) {
+          PostalService.topicRegistry.set(topic, new Set());
+        }
+        const registrySet = PostalService.topicRegistry.get(topic)!;
+        if (!registrySet.has(actorId)) {
+          registrySet.add(actorId);
+          if (PostalService.debugMode) {
+            // When in debug, skip local discovery to test signaling only
+            LogChannel.debug("postalservice", `skipping local discovery for topic ${topic}`);
+            LogChannel.debug("postalservice", `force creating local proxy for ${actorId}`);
+            const node = await this.getActorRemoteInfo(actorId)
+            this.createProxyActor(actorId, node.nodeId!, true)
+          }
+          if (this.signalingClient) {
+            const info = await this.getActorRemoteInfo(actorId);
+            if (!info.nodeId) throw new Error("Cannot subscribe to topic: nodeId unknown");
+            this.signalingRegister(actorId, topic, info.nodeId);
+          }
+        } else {
+          console.log("topics not aware of actor")
+        }
+      }
+
+      // Propagate contact updates only when not in debug mode
+      if (!PostalService.debugMode) {
+        const topicSet = PostalService.topicRegistry.get(topic);
+        if (!topicSet) throw new Error(`Topic ${topic} not found in registry`);
+        this.doTopicUpdate(topicSet, actorId, delmode);
       }
     },
-    ADDREMOTE: (payload: { actorId: ToAddress, topic: string, nodeId: string }) => { 
-      const actorid = payload.actorId
-      const topic = payload.topic
-      const nodeid = payload.nodeId
-
-      //create remote proxy
-      if (!PostalService.actors.has(actorid)) {
-        CustomLogger.log("postalservice", `addremote Creating proxy for remote actor ${actorid} ${nodeid}`);
-        this.createProxyActor(actorid, nodeid, false);
-        const newActor = PostalService.actors.get(actorid as ToAddress);
-        if (newActor) { newActor.topics.add(topic); }
+    ADDREMOTE: (payload: { actorId: ActorId; topic: TopicName; nodeId: string }) => {
+      console.log("ADDREMOTE")
+      const { actorId, topic, nodeId } = payload;
+      if (!PostalService.actors.has(actorId)) {
+        LogChannel.log("postalservice", `addremote: Creating proxy for remote actor ${actorId} @ ${nodeId}`);
+        this.createProxyActor(actorId, nodeId, false);
+        PostalService.topicRegistry.get(topic)?.add(actorId);
+      } else {
+        LogChannel.log("postalservice", "addremote: remote actor already exists");
       }
-      else { CustomLogger.log("postalserviceDEBUG", `remote already exists`); }
-      return true
-    }
+      return true;
+    },
   };
 
-  async add(address: string, base?: string | URL): Promise<ToAddress> {
-    CustomLogger.log("postalserviceCreate", "creating", address);
+  async add(address: string, base?: string | URL): Promise<ActorId> {
+    LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
-    const workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
-    const worker: Worker = new PostalService.WorkerClass(
-      workerUrl,
-      { name: address, type: "module" }
-    );
-    worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
 
+    let workerUrl: string;
+    if (typeof Deno !== 'undefined') {
+      workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
+    } else {
+      const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
+      workerUrl = new URL(address, baseUrl).href;
+    }
+
+    const worker = new PostalService.WorkerClass(workerUrl, { name: address, type: "module" });
+    worker.onmessage = (event: MessageEvent<Message>) => this.OnMessage(event.data);
 
     const callbackKey = Symbol('actor-creation');
-    const actorSignal = new Signal<ToAddress>();
+    const actorSignal = new Signal<ActorId>();
     this.callbackMap.set(callbackKey, actorSignal);
 
-    // Send the INIT message with the callback key in the payload
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
-      payload: {
-        callbackKey: callbackKey.toString(),
-        originalPayload: null
-      },
+      payload: { callbackKey: callbackKey.toString(), originalPayload: null },
     });
 
-
     const id = await actorSignal.wait();
-
-
     this.callbackMap.delete(callbackKey);
 
-    CustomLogger.log("postalserviceCreate", "created", id);
-
-    // Create an Actor object
-    const actor: Actor = {
-      worker,
-      topics: new Set<string>()
-    };
-
-    PostalService.actors.set(id, actor);
+    LogChannel.log("postalserviceCreate", "created", id);
+    PostalService.actors.set(id, { worker });
     return id;
   }
 
-  static murder(address: string) {
+  static murder(address: ActorId) {
     const actor = PostalService.actors.get(address);
     if (actor) {
       actor.worker.terminate();
@@ -205,7 +192,7 @@ export class PostalService {
   }
 
   OnMessage = (message: Message): void => {
-    //CustomLogger.log("postalservice", "postalService handleMessage", message);
+    LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
@@ -222,128 +209,133 @@ export class PostalService {
         (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
-    PostalService.lastSender = message.address.fm as ToAddress;
+    PostalService.lastSender = message.address.fm as ActorId;
   };
 
-  async PostMessage(
-    message: TargetMessage | Message,
-    cb: true
-  ): Promise<unknown>;
-  PostMessage(
-    message: TargetMessage | Message,
-    cb?: false
-  ): void;
-  async PostMessage(
-    message: TargetMessage | Message,
-    cb?: boolean
-  ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this);
+  private doTopicUpdate(
+    topicSet: Set<ActorId>,
+    updater: ActorId,
+    delmode: boolean
+  ) {
+    if (PostalService.debugMode) {
+      // Skip local discovery when debugging
+      return;
+    }
+    for (const actorId of topicSet) {
+      if (actorId === updater) continue;
+      const type = delmode ? "REMOVECONTACT" : "ADDCONTACT";
+      this.PostMessage({ target: actorId, type, payload: updater });
+      this.PostMessage({ target: updater, type, payload: actorId });
+    }
   }
 
-  //#endregion
+  PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+    PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb?: false | undefined): void;
+    // Implementation
+    PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb?: boolean): any {
+      return PostMessage(message as any, cb, this);
+    }
 
-  private async getActorRemoteInfo(actorId: ToAddress, fetchNodeId: boolean = true): Promise<{ isRemote: boolean, nodeId: string | undefined }> {
+  //#endregion
+  private async getActorRemoteInfo(
+    actorId: ActorId
+  ): Promise<{ isRemote: boolean; nodeId?: string }> {
     const actor = PostalService.actors.get(actorId);
-    if (!actor) return { isRemote: false, nodeId: undefined };
+    if (!actor) return { isRemote: false };
 
     let isRemote = false;
-    let nodeId: string | undefined;
-
-    // Check if this is a remote actor
     try {
       isRemote = (actor.worker as any).isRemote === true ||
         (actor.worker as any).constructor.name === 'IrohWebWorker';
-    } catch (_) {
+    } catch {
       isRemote = false;
     }
 
-    // If fetchNodeId is true and the actor has getIrohAddr method, get the nodeId
-    if (fetchNodeId && typeof (actor.worker as any).getIrohAddr === 'function') {
+    let nodeId: string | undefined;
+    if (typeof (actor.worker as any).getIrohAddr === 'function') {
       try {
-        const irohAddr = await (actor.worker as any).getIrohAddr();
-        if (irohAddr && irohAddr.nodeId) {
-          nodeId = irohAddr.nodeId;
-        } else {
-          nodeId = undefined;
-          CustomLogger.log("postalservice", `No nodeId available for actor ${actorId}`);
-        }
-      } catch (error) {
-        console.error("postalservice", `Failed to get nodeId for actor ${actorId}:`, error);
+        const addr = await (actor.worker as any).getIrohAddr();
+        nodeId = addr.nodeId;
+      } catch {
+        LogChannel.log("postalservice", `Failed to get nodeId for ${actorId}`);
       }
     }
 
     return { isRemote, nodeId };
   }
 
-  private signalingRegister(localActorId: ToAddress, topic: string, nodeId: string) {
-    if (this.signalingClient) {
-      this.signalingClient.joinTopic(localActorId, topic, nodeId);
+  private signalingRegister(
+    localActorId: ActorId,
+    topic: TopicName,
+    nodeId: string
+  ) {
+    if (!this.signalingClient) return;
+    this.signalingClient.joinTopic(localActorId, topic, nodeId);
 
-      this.signalingClient.onJoinTopic(topic, (remoteActorId, remoteNodeId) => {
-
-        if (remoteActorId === localActorId) return; //ignore self
-
-        // Only handle remote actors that aren't already in our system
-        if (remoteNodeId && !PostalService.actors.has(remoteActorId as ToAddress)) {
-          //create remote proxy
-          CustomLogger.log("postalservice", `signaling: Creating proxy for remote actor ${remoteActorId}`);
-          this.createProxyActor(remoteActorId, remoteNodeId, false);
-          // Add the topic to the newly created actor
-          const newActor = PostalService.actors.get(remoteActorId as ToAddress);
-          if (newActor) {
-            newActor.topics.add(topic);
+    this.signalingClient.onJoinTopic(topic, (remoteActorId, remoteNodeId) => {
+      if (!remoteNodeId) throw new Error("signaling msg didnt have nodeid, idk")
+      if (remoteActorId === localActorId) return;
+      if (remoteNodeId && !PostalService.actors.has(remoteActorId)) {
+        LogChannel.log(
+          "postalservice",
+          `signaling: Creating proxy for remote actor ${remoteActorId}`
+        );
+        this.createProxyActor(remoteActorId, remoteNodeId, false);
+        PostalService.topicRegistry.get(topic)?.add(remoteActorId);
+      }
+      // Introduce new remote to all locals in topic
+      PostalService.topicRegistry.get(topic)?.forEach( async (localActorId) => {
+        if (localActorId === remoteActorId) return;
+        //intro remote to local
+        this.PostMessage<typeof defaultActorApi>({
+          target: localActorId, type: "ADDCONTACTNODE",
+          payload: {
+            actorId: remoteActorId,
+            topic: topic,
+            nodeid: remoteNodeId
           }
-          else throw new Error("failed to add to system")
-        }
-        //introduce remote actor to all local actors in topic
-        PostalService.actors.forEach((actor, actorId) => {
-          if (remoteActorId === actorId) return; //dont intro remote to remote
-
-          if (actor.topics.has(topic)) {
-            //intro remote to local
-            this.PostMessage({
-              address: { fm: "system", to: actorId },
-              type: "ADDCONTACT",
-              payload: remoteActorId,
-            });
-            //do intro the actor back to the remote
-            this.PostMessage({
-              address: { fm: "system", to: remoteActorId },
-              type: "ADDCONTACTNODE",
-              payload: {
-                actorId: actorId,
-                topic: topic,
-                nodeId: nodeId
-              }
-            });
+        });
+        //now we need to tell the remote node that
+        //our local actor discovered that remote actor
+        //on topic
+        //and the local actor can be proxied via this nodeid
+        const localnodeid = await this.getActorRemoteInfo(localActorId)
+        if (!localnodeid.isRemote) throw new Error("this actor should have an irohnode but doesn't")
+        this.PostMessage<typeof defaultActorApi>({
+          target: remoteActorId, type: "ADDCONTACTNODE",
+          payload: {
+            actorId: localActorId,
+            topic: topic,
+            nodeid: localnodeid.nodeId!
           }
         });
       });
-    }
+    });
   }
 
-  private createProxyActor(actorId: string, nodeId: string, local: boolean): void {
+  /**
+   * Create a proxy actor (local or remote)
+   */
+  private createProxyActor(
+    actorId: ActorId,
+    nodeId: string,
+    local: boolean
+  ) {
     if (local) {
-      try {
-        const actor = PostalService.actors.get(actorId) as Actor;
-        //@ts-ignore irohwebworker specific
-        actor.worker = new PostalService.WorkerClass({ nodeId });
-      } catch (error: unknown) {
-        console.error("postalservice", `Failed to create test proxy for actor ${actorId}:`, error);
-        throw error instanceof Error ? error : new Error(String(error));
-      }
-    }
-    else {
-
-      if (!nodeId) throw new Error("nodeid undefined")
-      //@ts-ignore irohwebworker specific
-      const proxyworker = new PostalService.WorkerClass({ nodeId }) as Worker;
-      // Create an Actor object
-      const actor: Actor = {
-        worker: proxyworker,
-        topics: new Set<string>()
-      };
-      PostalService.actors.set(actorId, actor);
+      const actor = PostalService.actors.get(actorId);
+      if (!actor) throw new Error(`Missing actor ${actorId}`);
+      //@ts-expect-error iroh worker specific
+      (actor.worker as any) = new PostalService.WorkerClass({ nodeId });
+    } else {
+      //@ts-expect-error iroh worker specific
+      const proxy = new PostalService.WorkerClass({ nodeId }) as Worker;
+      PostalService.actors.set(actorId, { worker: proxy });
     }
   }
 }

@@ -1,94 +1,54 @@
 import { PostalService } from "./PostalService.ts";
 import type { GenericActorFunctions, Message, TargetMessage } from "./types.ts";
-import { Signal, StandardizeAddress } from "./utils.ts";
+import { processBigInts, StandardizeAddress } from "./utils.ts";
+import { Signal } from "./Signal.ts";
+
 
 // Map to store callbacks by UUID
 const callbackMap = new Map<string, Signal<unknown>>();
-
-function processBigInts(data: any): any {
-  if (data === null || data === undefined) {
-    return data;
-  }
-  if (typeof data === 'object') {
-    if (data !== null && '__bigint__' in data) {
-      return BigInt(data.__bigint__);
-    }
-
-    if (Array.isArray(data)) {
-      return data.map(item => processBigInts(item));
-    }
-
-    const result: Record<string, any> = {};
-    for (const key in data) {
-      result[key] = processBigInts(data[key]);
-    }
-    return result;
-  }
-
-  return data;
-}
 
 export async function runFunctions(message: Message, functions: GenericActorFunctions, ctx: any) {
   if (message.payload) {
     message.payload = processBigInts(message.payload);
   }
-  // Check if this is a callback message
-  if (message.type.startsWith("CB:")) {
-    // Extract the UUID from the callback message type
-    const parts = message.type.split(":");
-    const callbackId = parts.length > 2 ? parts[2] : undefined;
-    
-    // If we have a UUID, try to find the corresponding callback
-    if (callbackId && callbackMap.has(callbackId)) {
-      const callback = callbackMap.get(callbackId);
-      callback?.trigger(message.payload);
-      callbackMap.delete(callbackId); // Clean up after use
-      return;
-    } else {
-      // If no UUID or no callback found, it's an error
-      console.error("fullmsg: ", message);
-      throw new Error(`Callback received without a receiver: ${message.type}`);
-    }
-  } else {
-    // Check if the message type contains a UUID
-    const parts = message.type.split(":");
-    let baseType = message.type;
-    let callbackId: string | undefined;
-    
-    // If the message type has a UUID part, extract it
-    if (parts.length > 1) {
-      baseType = parts[0];
-      callbackId = parts[1];
-    }
-    
-    // Check if the function exists
-    if (!functions[baseType]) {
-      throw new Error(`Function not found for message type: ${baseType} (original: ${message.type})`);
-    }
-    
-    // Store the original message type for later use
-    const originalType = message.type;
-    
-    // Set the message type to the base type for function execution
-    message.type = baseType;
-    
-    // Execute the function
-    const ret = await functions[baseType]?.(message.payload);
-    
-    if (ret !== undefined && baseType !== "CB") {
-      // If we have a callbackId, use it in the response
-      const cbType = callbackId ? `CB:${baseType}:${callbackId}` : `CB:${baseType}`;
-      
-      ctx.PostMessage({
-        target: message.address.fm,
-        type: cbType,
-        payload: ret
-      });
-    }
-    
-    // Restore the original message type
-    message.type = originalType;
+  // Extract the base type and any callback ID
+  const parts = message.type.split(":");
+  const baseType = parts[0];
+  const callbackId = parts.length > 1 ? parts[1] : undefined;
+
+  // Check if this is a callback response
+  if (callbackId && callbackMap.has(callbackId)) {
+    // This is a callback response, trigger the stored callback
+    const callback = callbackMap.get(callbackId);
+    callback?.trigger(message.payload);
+    callbackMap.delete(callbackId); // Clean up after use
+    return;
   }
+
+  // Check if the function exists
+  if (!functions[baseType]) {
+    throw new Error(`Function not found for message type: ${baseType} (original: ${message.type})`);
+  }
+  const originalType = message.type;
+  message.type = baseType;
+
+  // Execute
+  const ret = await functions[baseType]?.(message.payload);
+
+  // If the function returned a value and we have a callback ID, send a response
+  if (ret !== undefined) {
+    // Use the same format for response: baseType:callbackId
+    const responseType = callbackId ? `${baseType}:${callbackId}` : baseType;
+
+    ctx.PostMessage({
+      target: message.address.fm,
+      type: responseType,
+      payload: ret
+    });
+  }
+
+  // Restore the original message type
+  message.type = originalType;
 }
 
 export async function PostMessage(
@@ -117,7 +77,7 @@ export async function PostMessage(
 
   let worker;
   if (!ctx.worker) {
-    const actor = PostalService.actors.get(message.address.to as string);
+    const actor = PostalService.actors.get(message.address.to);
     if (!actor) {
       console.error("Actor not found: ",message)
       throw new Error(`Actor not found: ${message.address.to}`);

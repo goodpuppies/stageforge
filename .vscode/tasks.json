@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "genlaunch",
+      "type": "deno",
+      "command": "run",
+      "args": [
+        "-A",
+        "gen-deno-launch.ts"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/examples"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "genlaunch",
+        "fileLocation": "relative",
+        "pattern": {
+          "regexp": ".*"
+        }, // we don’t care about errors here
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "✨ generating", // anything printed near the start
+          "endsPattern": "READY-FOR-DEBUG" // magic end-token
+        }
+      },
+      "presentation": {
+        "reveal": "always"
+      },
+      "group": "build"
+    }
+  ]
+}

@@ -1,19 +1,31 @@
-import { PostMan } from "../../src/mod.ts";
+import { PostMan, actorState } from "../../src/mod.ts";
+import { wait } from "../../src/lib/utils.ts";
 
-const state = {
+const state = actorState({
   name: "sub",
-};
+});
 
-new PostMan(state.name, {
-  CUSTOMINIT: (payload: string) => {
-  },
-  HELLO: (_payload: null) => {
-    return "hi"
+export const api = {
+  __INIT__: (_payload: string) => {
+    PostMan.setTopic("muffin")
+    main()
   },
   LOG: (_payload: null) => {
-    console.log("hello from", PostMan.state.id);
+    console.log("hello from", state.id);
   },
   GETSTRING: (_payload: null) => {
-    return "Hello from sub actor!";
+    return "some text"
+  },
+  ADD: (payload: { a: number, b: number }) => {
+    return payload.a + payload.b;
   }
-} as const);
+} as const;
+
+new PostMan(state, api);
+
+async function main() {
+  while (true) {
+    await wait(5000)
+    console.log("in ", state.id, " ", state.addressBook)
+  }
+}

@@ -1,13 +1,15 @@
-import { CustomLogger } from "../logger/customlogger.ts";
-import { type ToAddress } from "./types.ts";
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
+import type { ActorId } from "./types.ts";
 
 // Simple message types for the signaling server
 interface SignalingMessage {
   type: "join" | "leave";
-  actorId: string;
+  actorId: ActorId;
   topic: string;
   nodeId?: string;
 }
+
+LogChannel
 
 /**
  * A simple client for interacting with the signaling server
@@ -17,7 +19,7 @@ export class SignalingClient {
   private ws: WebSocket | null = null;
   private connected = false;
   private messageQueue: SignalingMessage[] = [];
-  private topicCallbacks = new Map<string, Set<(actorId: string, nodeId?: string) => void>>();
+  private topicCallbacks = new Map<string, Set<(actorId: ActorId, nodeId?: string) => void>>();
   
   /**
    * Create a new SignalingClient
@@ -38,7 +40,7 @@ export class SignalingClient {
         this.ws = new WebSocket(this.serverUrl);
         
         this.ws.addEventListener("open", () => {
-          CustomLogger.log("signaling", "Connected to signaling server");
+          LogChannel.log("signaling", "Connected to signaling server");
           this.connected = true;
           
           // Send any queued messages
@@ -49,27 +51,27 @@ export class SignalingClient {
         });
         
         this.ws.addEventListener("message", (event) => {
-          CustomLogger.log("signaling", "Received message");
+          LogChannel.log("signaling", "Received message");
           try {
             const data = JSON.parse(event.data) as SignalingMessage;
             this.handleMessage(data);
           } catch (error) {
-            CustomLogger.log("signaling", "Error parsing message:", error);
+            LogChannel.log("signaling", "Error parsing message:", error);
           }
         });
         
         this.ws.addEventListener("close", () => {
-          CustomLogger.log("signaling", "Disconnected from signaling server");
+          LogChannel.log("signaling", "Disconnected from signaling server");
           this.connected = false;
           this.ws = null;
         });
         
-        this.ws.addEventListener("error", (error) => {
-          CustomLogger.error("default", "WebSocket error using offline mode");
+        this.ws.addEventListener("error", () => {
+          LogChannel.error("default", "WebSocket error using offline mode");
           //reject(error);
         });
       } catch (error) {
-        CustomLogger.log("signaling", "Error connecting to signaling server:", error);
+        LogChannel.log("signaling", "Error connecting to signaling server:", error);
         reject(error);
       }
     });
@@ -81,7 +83,7 @@ export class SignalingClient {
    * @param topic The topic to join
    * @param nodeId Optional Iroh node ID
    */
-  joinTopic(actorId: ToAddress, topic: string, nodeId?: string): void {
+  joinTopic(actorId: ActorId, topic: string, nodeId?: string): void {
     const message: SignalingMessage = {
       type: "join",
       actorId: actorId,
@@ -92,7 +94,7 @@ export class SignalingClient {
     if (!this.connected) {
       this.messageQueue.push(message);
       this.connect().catch(error => {
-        CustomLogger.log("signaling", "Failed to connect to signaling server:", error);
+        LogChannel.log("signaling", "Failed to connect to signaling server:", error);
       });
       return;
     }
@@ -105,7 +107,7 @@ export class SignalingClient {
    * @param actorId The ID of the actor leaving the topic
    * @param topic The topic to leave
    */
-  leaveTopic(actorId: ToAddress, topic: string): void {
+  leaveTopic(actorId: ActorId, topic: string): void {
     const message: SignalingMessage = {
       type: "leave",
       actorId: actorId,
@@ -115,7 +117,7 @@ export class SignalingClient {
     if (!this.connected) {
       this.messageQueue.push(message);
       this.connect().catch(error => {
-        CustomLogger.log("signaling", "Failed to connect to signaling server:", error);
+        LogChannel.log("signaling", "Failed to connect to signaling server:", error);
       });
       return;
     }
@@ -128,7 +130,7 @@ export class SignalingClient {
    * @param topic The topic to watch
    * @param callback The callback to call when an actor joins
    */
-  onJoinTopic(topic: string, callback: (actorId: string, nodeId?: string) => void): void {
+  onJoinTopic(topic: string, callback: (actorId: ActorId, nodeId?: string) => void): void {
     if (!this.topicCallbacks.has(topic)) {
       this.topicCallbacks.set(topic, new Set());
     }
@@ -151,7 +153,7 @@ export class SignalingClient {
    * Send a message to the signaling server
    */
   private sendMessage(message: SignalingMessage): void {
-    CustomLogger.log("signaling", "Sending message:", message);
+    LogChannel.log("signaling", "Sending message:", message);
     if (this.ws && this.connected) {
       this.ws.send(JSON.stringify(message));
     } else {
@@ -165,7 +167,7 @@ export class SignalingClient {
   private handleMessage(message: SignalingMessage): void {
     if (message.type === "join") {
       // An actor joined a topic
-      CustomLogger.log("signaling", `Actor ${message.actorId} joined topic ${message.topic}`);
+      LogChannel.log("signaling", `Actor ${message.actorId} joined topic ${message.topic}`);
       
       // Call any callbacks for this topic
       const callbacks = this.topicCallbacks.get(message.topic);
@@ -174,7 +176,7 @@ export class SignalingClient {
       }
     } else if (message.type === "leave") {
       // An actor left a topic
-      CustomLogger.log("signaling", `Actor ${message.actorId} left topic ${message.topic}`);
+      LogChannel.log("signaling", `Actor ${message.actorId} left topic ${message.topic}`);
     }
   }
 }

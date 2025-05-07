@@ -1,50 +1,56 @@
 import { wait } from "../../src/lib/utils.ts";
-import { PostMan } from "../../src/mod.ts";
+import { PostMan, actorState } from "../../src/mod.ts";
+import type { api as subApi } from "./sub.ts";
 
-const state = {
-  name: "main",
-};
+const state = actorState({
+  name: "main" as string,
+});
 
-new PostMan(state.name, {
-  CUSTOMINIT: (payload: string) => {
+export const api = {
+  __INIT__: (payload: string) => {
     PostMan.setTopic("muffin")
+    console.log("id is", state.id)
     main(payload);
   },
   HELLO: (_payload: null) => {
-    console.log("hi")
+    return "hi"
   },
-  LOG: (_payload: null) => {
-    console.log("actor1", PostMan.state.id);
+  LOG: (_payload: void) => {
+    console.log("actor", state.id);
   }
-} as const);
+} as const
+new PostMan(state, api);
 
 async function main(_payload: string) {
-  console.log("main1", PostMan.state.id);
 
   const sub = await PostMan.create("./actors/sub.ts")
-  console.log("sub", sub)
-  const sub2 = await PostMan.create("./actors/sub.ts")
+  console.log(sub)
+  await PostMan.create("./actors/sub.ts")
 
-  console.log("main1", PostMan.state.addressBook)
+  const actors = Array.from(state.addressBook)
+    .filter((addr) => addr.startsWith('sub@'));
 
-  /* PostMan.PostMessage({
-    target: sub2,
-    type: "CHANGENAME",
-    payload: "sub2"
-  }) */
-
-  PostMan.PostMessage({
-    target: [sub, sub2],
+  PostMan.PostMessage<typeof subApi>({
+    target: actors, 
     type: "LOG",
     payload: null,
   });
-  console.log("test cb impl")
-  const string = await PostMan.PostMessage({
+  const result = await PostMan.PostMessage<typeof subApi>({
     target: sub,
-    type: "GETSTRING",
-    payload: null,
+    type: "ADD",  // Autocomplete works here
+    payload: { a: 5, b: 3 }  // Type checked!
   }, true);
-  console.log(string)
-  await wait(3000)
-  console.log("main1", PostMan.state.addressBook)
+
+  console.log(result)
+
+  while (true) {
+    const string = await PostMan.PostMessage<typeof subApi>({
+      target: sub,
+      type: "GETSTRING",
+      payload: null,
+    }, true);
+    console.log(string)
+    console.log("in ", state.id, " ", state.addressBook)
+    await wait(5000)
+  }
 }

@@ -1,5 +1,5 @@
 import { PostalService } from "../src/mod.ts";
-import { IrohWebWorker } from "../../../IrohWorker/IrohWorker.ts"
+import { IrohWebWorker } from "../../irohworker/IrohWorker.ts"
 
 const postalservice = new PostalService(IrohWebWorker);
 
