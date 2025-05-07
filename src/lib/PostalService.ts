@@ -1,7 +1,8 @@
 import { Signal } from "./Signal.ts";
 import {
   type Message,
-  type TargetMessage,
+  type MessageFrom,
+  type ReturnFrom,
   type GenericActorFunctions,
   System,
   type TopicName,
@@ -99,7 +100,15 @@ export class PostalService {
   async add(address: string, base?: string | URL): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
-    const workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
+
+    let workerUrl: string;
+    if (typeof Deno !== 'undefined') {
+      workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
+    } else {
+      const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
+      workerUrl = new URL(address, baseUrl).href;
+    }
+
     const worker: Worker = new PostalService.WorkerClass(
       workerUrl,
       { name: address, type: "module" }
@@ -147,7 +156,7 @@ export class PostalService {
   }
 
   OnMessage = (message: Message): void => {
-    LogChannel.log("postalserviceonmessage", "postalService handleMessage", message);
+    LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
@@ -196,20 +205,18 @@ export class PostalService {
     }
   }
 
-  async PostMessage(
-    message: TargetMessage | Message,
-    cb: true
-  ): Promise<unknown>;
-  PostMessage(
-    message: TargetMessage | Message,
-    cb?: false
-  ): void;
-  async PostMessage(
-    message: TargetMessage | Message,
-    cb?: boolean
-  ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this);
-  }
+  PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+    PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb?: false | undefined): void;
+    // Implementation
+    PostMessage<
+      T extends Record<string, (payload: any) => any>
+    >(message: MessageFrom<T>, cb?: boolean): any {
+      return PostMessage(message as any, cb, this);
+    }
 
   //#endregion
 }

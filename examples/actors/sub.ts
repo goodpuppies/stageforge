@@ -15,6 +15,9 @@ export const api = {
   },
   GETSTRING: (_payload: null) => {
     return "some text"
+  },
+  ADD: (payload: { a: number, b: number }) => {
+    return payload.a + payload.b;
   }
 } as const;
 

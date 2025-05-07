@@ -35,6 +35,13 @@ async function main(_payload: string) {
     type: "LOG",
     payload: null,
   });
+  const result = await PostMan.PostMessage<typeof subApi>({
+    target: sub,
+    type: "ADD",  // Autocomplete works here
+    payload: { a: 5, b: 3 }  // Type checked!
+  }, true);
+
+  console.log(result)
 
   while (true) {
     const string = await PostMan.PostMessage<typeof subApi>({

@@ -26,11 +26,11 @@ export const functions = {
     // @ts-ignore: get custominit from importer
     PostMan.functions.__INIT__?.(payload?.originalPayload || null, PostMan.state.id);
     //@ts-expect-error PostMan.state is internal
-    LogChannel.log("postmanCreate", `initied ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
+    LogChannel.log("postmanCreate", `initialized ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
   },
   //terminate
   SHUT: (_payload: null) => {
-    LogChannel.log("class", "Shutting down...");
+    LogChannel.log("postman", "Shutting down...");
     PostMan.worker.terminate();
   },
   ADDCONTACT: (payload: ActorId) => {

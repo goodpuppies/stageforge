@@ -17,7 +17,7 @@ export class Signal<T> {
 
   trigger(value: T): void {
     if (this.resolve) {
-      LogChannel.log("signal", `signal ${this.id.toString()} triggered`);
+      LogChannel.log("signal", `signal ${this.id.toString()} triggered with value:`, value);
       this.resolve(value);
     }
   }
