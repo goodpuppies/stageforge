@@ -1,37 +1,55 @@
-import { Signal } from "./utils.ts";
+import { Signal } from "./Signal.ts";
 import {
   type Message,
   type TargetMessage,
   type GenericActorFunctions,
   System,
+  type TopicName,
   type ActorId,
-  createActorId,
-  type worker,
+  type ActorW,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
-import { CustomLogger } from "../logger/customlogger.ts";
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
 
-// Define Actor interface with proper types
-interface Actor {
-  worker: Worker;
-  topics: Set<string>;
+
+// Worker constructor type that matches the standard Worker constructor
+export type WorkerConstructor = new (
+  scriptURL: string | URL,
+  options?: WorkerOptions
+) => Worker;
+interface custompayload {
+  actorname: string;
+  base?: string | URL
 }
 
 export class PostalService {
-  public static actors: Map<ActorId, Actor> = new Map();
+  public static actors: Map<ActorId, ActorW> = new Map();
   public static lastSender: ActorId | null = null;
+  public static debugMode = false;
+  private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
   private callbackMap: Map<symbol, Signal<any>> = new Map();
+  private static WorkerClass: WorkerConstructor = Worker;
+
+  // Constructor that accepts a custom Worker implementation
+  constructor(customWorkerClass?: WorkerConstructor) {
+    if (customWorkerClass) {
+      PostalService.WorkerClass = customWorkerClass;
+      LogChannel.log("postalservice", "Using custom Worker implementation");
+    }
+  }
 
   //#region postalservice core
 
   public functions: GenericActorFunctions = {
-    CREATE: async (payload: string) => {
-      const id = await this.add(payload);
-      CustomLogger.log("postalservice", "created actor id: ", id, "sending back to creator")
+
+    CREATE: async (payload: custompayload ) => {
+
+      const id = await this.add(payload.actorname, payload.base);
+      LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
     LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
-      CustomLogger.log("postalservice", "new actor loaded, id: ", payload.actorId);
+      LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
 
       for (const [key, signal] of this.callbackMap.entries()) {
         if (key.toString() === payload.callbackKey) {
@@ -48,19 +66,41 @@ export class PostalService {
     },
     MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
+    },
+    TOPICUPDATE: (payload: { delete: boolean, name: TopicName }) => {
+      const Dmode = payload.delete
+      const topic = payload.name
+      //#region get actor please refactor
+      // The actor ID is the sender of the message BAD CODE!!
+      const actorId = PostalService.lastSender as ActorId;
+      if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
+      const actor = PostalService.actors.get(actorId);
+      //#endregion
+
+      if (actor) {
+        if (Dmode) {
+          PostalService.topicRegistry.get(topic)?.delete(actorId);
+        } else {
+          if (!PostalService.topicRegistry.has(topic)) {
+            PostalService.topicRegistry.set(topic, new Set());
+          }
+          PostalService.topicRegistry.get(topic)?.add(actorId);
+          if (PostalService.debugMode) {
+            console.log(`Registered actor ${actorId} to topic ${topic}`);
+          }
+        }
+      }
+      const tobj = PostalService.topicRegistry.get(topic)
+      if (!tobj) throw new Error("wat")
+      this.doTopicUpdate(tobj, actorId, Dmode)
     }
   };
 
-  async add(address: string): Promise<ActorId> {
-    CustomLogger.log("postalservice", "creating", address);
-    let workerUrl: string;
-    if (typeof Deno !== 'undefined') {
-      workerUrl = new URL(address, `file://${Deno.cwd()}/`).href;
-    } else {
-      const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-      workerUrl = new URL(address, baseUrl).href;
-    }
-    const worker: Worker = new Worker(
+  async add(address: string, base?: string | URL): Promise<ActorId> {
+    LogChannel.log("postalserviceCreate", "creating", address);
+    // Resolve relative to Deno.cwd()
+    const workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
+    const worker: Worker = new PostalService.WorkerClass(
       workerUrl,
       { name: address, type: "module" }
     );
@@ -87,12 +127,11 @@ export class PostalService {
 
     this.callbackMap.delete(callbackKey);
 
-    CustomLogger.log("postalservice", "created", id);
+    LogChannel.log("postalserviceCreate", "created", id);
 
     // Create an Actor object
-    const actor: Actor = {
-      worker,
-      topics: new Set<string>()
+    const actor: ActorW = {
+      worker
     };
 
     PostalService.actors.set(id, actor);
@@ -108,7 +147,7 @@ export class PostalService {
   }
 
   OnMessage = (message: Message): void => {
-    //CustomLogger.log("postalservice", "postalService handleMessage", message);
+    LogChannel.log("postalserviceonmessage", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
     addresses.forEach((address) => {
       message.address.to = address;
@@ -117,16 +156,45 @@ export class PostalService {
         runFunctions(message, this.functions, this)
       }
       else {
-        if (!PostalService.actors.has(message.address.to as ActorId)) {
+        if (!PostalService.actors.has(message.address.to)) {
           console.error("postal service does not have: ", message.address.to)
           console.error("fullmsg:", message)
           throw new Error("postal service does not have: " + message.address.to)
         }
-        (PostalService.actors.get(message.address.to as ActorId)!.worker).postMessage(message);
+        (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
     PostalService.lastSender = message.address.fm as ActorId;
   };
+
+  doTopicUpdate(topic: Set<ActorId>, updater: ActorId, delmode: boolean) {
+    for (const actor of topic) {
+      if (actor === updater) { continue; }
+      if (delmode) {
+        this.PostMessage({
+          target: actor,
+          type: "REMOVECONTACT",
+          payload: updater
+        })
+        this.PostMessage({
+          target: updater,
+          type: "REMOVECONTACT",
+          payload: actor
+        })
+      } else {
+        this.PostMessage({
+          target: actor,
+          type: "ADDCONTACT",
+          payload: updater
+        })
+        this.PostMessage({
+          target: updater,
+          type: "ADDCONTACT",
+          payload: actor
+        })
+      }
+    }
+  }
 
   async PostMessage(
     message: TargetMessage | Message,

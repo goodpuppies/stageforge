@@ -1,4 +1,3 @@
-import { CustomLogger } from "../logger/customlogger.ts";
 import {
   System,
   type Message,
@@ -6,7 +5,6 @@ import {
   type AddressedMessage,
   type MessageType
 } from "./types.ts";
-
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(() => resolve(), ms));
@@ -24,30 +22,32 @@ export function StandardizeAddress(message: TargetMessage | Message, ctx: any): 
       address: { fm: from, to: message.target },
       ...message,
     };
+    delete (addressedMessage as any).target;
   } else {
     addressedMessage = message;
   }
   return addressedMessage
 }
 
-export class Signal<T> {
-  private resolve: ((value: T) => void) | null = null;
-  private promise: Promise<T> | null = null;
-
-  constructor() {
-    this.promise = new Promise((res) => {
-      this.resolve = res;
-    });
+export function processBigInts(data: any): any {
+  if (data === null || data === undefined) {
+    return data;
   }
-
-  wait(): Promise<T> {
-    return this.promise!;
-  }
-
-  trigger(value: T): void {
-    if (this.resolve) {
-      CustomLogger.log("actorsys", "signal triggered");
-      this.resolve(value);
+  if (typeof data === 'object') {
+    if (data !== null && '__bigint__' in data) {
+      return BigInt(data.__bigint__);
     }
+
+    if (Array.isArray(data)) {
+      return data.map(item => processBigInts(item));
+    }
+
+    const result: Record<string, any> = {};
+    for (const key in data) {
+      result[key] = processBigInts(data[key]);
+    }
+    return result;
   }
+
+  return data;
 }

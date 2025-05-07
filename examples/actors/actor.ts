@@ -1,11 +1,15 @@
-import { PostMan } from "../../src/mod.ts";
-import type { api as subfuncs } from "./sub.ts";
+import { wait } from "../../src/lib/utils.ts";
+import { PostMan, actorState } from "../../src/mod.ts";
+import type { api as subApi } from "./sub.ts";
 
-const state = {
+const state = actorState({
   name: "main" as string,
-};
+});
+
 export const api = {
-  CUSTOMINIT: (payload: string) => {
+  __INIT__: (payload: string) => {
+    PostMan.setTopic("muffin")
+    console.log("id is", state.id)
     main(payload);
   },
   HELLO: (_payload: null) => {
@@ -20,20 +24,26 @@ new PostMan(state, api);
 async function main(_payload: string) {
 
   const sub = await PostMan.create("./actors/sub.ts")
-  const sub2 = await PostMan.create("./actors/sub.ts")
+  console.log(sub)
+  await PostMan.create("./actors/sub.ts")
 
-  PostMan.PostMessage({
-    target: [sub, sub2],
+  const actors = Array.from(state.addressBook)
+    .filter((addr) => addr.startsWith('sub@'));
+
+  PostMan.PostMessage<typeof subApi>({
+    target: actors, 
     type: "LOG",
     payload: null,
   });
+
   while (true) {
-    const string = await PostMan.PostMessage<typeof subfuncs>({
+    const string = await PostMan.PostMessage<typeof subApi>({
       target: sub,
       type: "GETSTRING",
       payload: null,
     }, true);
     console.log(string)
-    await new Promise(resolve => setTimeout(resolve, 5000))
+    console.log("in ", state.id, " ", state.addressBook)
+    await wait(5000)
   }
 }

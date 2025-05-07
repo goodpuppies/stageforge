@@ -12,7 +12,6 @@
  */
 
 import { resolve } from "jsr:@std/path";
-import { wait } from "../mod.ts";
 
 const INSPECT_PORT = 9229;
 const POLL_INTERVAL = 300;   // ms
@@ -84,5 +83,5 @@ launch.compounds.push(compound);
 
 await Deno.writeTextFile(launchPath, JSON.stringify(launch, null, 2));
 console.log(`✨  Updated ${launchPath} with ${attaches.length} workers.`);
-await wait(1000)
+await new Promise(resolve => setTimeout(resolve, 1000));
 console.log("READY-FOR-DEBUG");  

@@ -6,7 +6,7 @@ import {
   type ReturnFrom,
   System,
   type ActorId,
-  type ActorInit,
+  createTopicName
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
@@ -15,53 +15,67 @@ export class PostMan {
   private static addressBook: Set<ActorId>;
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
-  static state: BaseState;
+  private static state: BaseState;
 
   constructor(
-    actorState: ActorInit & { id?: ActorId },
+    actorState: Record<string, any> & BaseState,
     functions: GenericActorFunctions,
   ) {
-    // Check that required properties exist
-    if (!actorState.name) {
-      throw new Error("Actor state must have a name property");
-    }
-    
-    // Initialize with system properties
-    const systemProps = {
-      id: "" as ActorId, // Will be set properly during INIT
-      addressBook: new Set<ActorId>(),
-    };
-    
-    // Create a single state object with both system and actor properties
-    // This ensures both actorState and PostMan.state reference the same object
-    Object.assign(actorState, systemProps);
-    
-    // Set PostMan.state to reference the actor's state object
-    // Use type assertion to make TypeScript recognize all properties
-    PostMan.state = actorState as BaseState;
-    PostMan.addressBook = PostMan.state.addressBook;
-    
-    // Merge functions
+    PostMan.state = actorState;
+    PostMan.state.name = actorState.name;
+    PostMan.addressBook = actorState.addressBook;
     PostMan.functions = { ...PostMan.functions, ...functions };
-    
-    // Set up message handler
     PostMan.worker.onmessage = (event: MessageEvent) => {
       runFunctions(event.data, PostMan.functions, PostMan)
     };
   }
 
-  static async create(actorname: tsfile | URL): Promise<ActorId> {
+
+  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ActorId> {
+    //console.log("create", actorname)
+    interface payload {
+      actorname: tsfile | URL;
+      base?: tsfile | URL
+    }
+    let payload: payload
+    if (base) {
+      payload = { actorname, base }
+    }
+    else {
+      payload = {actorname}
+    }
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
-      payload: actorname
+      payload: payload
     }, true) as ActorId
 
     PostMan.addressBook.add(result)
     return result;
   }
 
-
+  static setTopic(topic: string) {
+    PostMan.PostMessage({
+      target: System,
+      type: "TOPICUPDATE",
+      payload: {
+        delete: false,
+        name: topic
+      }
+    })
+    PostMan.state.topics.add(createTopicName(topic))
+  }
+  static delTopic(topic: string) {
+    PostMan.PostMessage({
+      target: System,
+      type: "TOPICUPDATE",
+      payload: {
+        delete: true,
+        name: topic
+      }
+    })
+    PostMan.state.topics.delete(createTopicName(topic))
+  }
 
   static PostMessage<
     T extends Record<string, (payload: any) => any>

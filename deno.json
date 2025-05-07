@@ -2,5 +2,8 @@
   "name": "@goodpuppies/stageforge",
   "version": "0.0.3",
   "exports": "./mod.ts",
-  "license": "MIT"
+  "license": "MIT",
+  "imports": {
+    "@mommysgoodpuppy/logchannel": "jsr:@mommysgoodpuppy/logchannel@^0.1.0"
+  }
 }

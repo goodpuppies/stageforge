@@ -1,9 +1,11 @@
+// Worker interface
 export const worker = self as unknown as Worker;
 
-// Strongly typed ActorId with validation at runtime
-export type ActorId = string & { readonly __brand: unique symbol };
+// ToAddress type
+export type ActorId = string & { readonly __actorID: unique symbol };
 
-// Function to validate and create ActorId
+export type TopicName = string & { readonly __topicName: unique symbol };
+
 export function createActorId(value: string): ActorId {
   // Validate format: name@uuid
   if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
@@ -12,34 +14,40 @@ export function createActorId(value: string): ActorId {
   return value as ActorId;
 }
 
-// For backwards compatibility, keep ToAddress as an alias
-export type ToAddress = ActorId;
+export function createTopicName(name: string): TopicName {
+  return name as TopicName;
+}
 
-// Basic state interface with all required properties for internal use
+// BaseState interface
 export interface BaseState {
   name: string;
   id: ActorId;
   addressBook: Set<ActorId>;
-  [key: string]: any; // Allow any additional properties
+  topics: Set<TopicName>;
 }
 
-// Interface for actor state initialization - only name is required
-export interface ActorInit {
-  name: string;
-  id?: ActorId;
-  addressBook?: Set<ActorId>;
-  [key: string]: any; // Allow any additional properties
+export function actorState<T extends object>(state: T): T & BaseState {
+  return {
+    id: "",
+    addressBook: new Set(),
+    topics: new Set(),
+    ...state,
+  } as T & BaseState;
 }
 
-export const System = "SYSTEM" as const;
+export const System = "SYSTEM" as ActorId;
+
 export type SystemType = typeof System;
 
 // Message Address Interfaces
+
+// SystemCommand interface
 export interface SystemCommand {
   fm: typeof System;
   to: string;
 }
 
+// WorkerToSystem interface
 export interface WorkerToSystem {
   fm: string;
   to: typeof System;
@@ -54,79 +62,73 @@ export interface MessageAddressArray {
   to: string | string[];
 }
 
-// Real message address with ActorId
-export interface MessageAddressReal {
-  fm: string;
-  to: ActorId;
-}
 
 // Union of all possible message addresses
-export type MessageAddress = MessageAddressSingle | MessageAddressArray | MessageAddressReal;
+export type MessageAddress = MessageAddressSingle | MessageAddressArray;
 
-// Type for message type
-export type MessageType = GenericMessage;
+// MessageType type
+export type MessageType = GenericMessage
 
-export type ValidateMessageType<T extends string> = T extends MessageType
-  ? T
-  : T extends string
-  ? never
-  : `Invalid message type. Valid types are: ${MessageType extends string ? MessageType : never}`;
+// CallbackType type
+type CallbackType<T extends string> = `CB:${T}`;
 
-export type tsfile = string;
+// tsfile type
+export type tsfile = string
 
+// BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
-  type: string;
+  type: any | CallbackType<any>;
   payload: unknown;
 };
 
+// AddressedMessage interface
 export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
   address: {
-    fm: string;
-    to: string | string[] | ActorId;
+    fm: ActorId;
+    to: ActorId | ActorId[]
   };
 };
 
+// TargetedMessage interface
 export type TargetedMessage<K extends MessageType> = BaseMessage<K> & {
-  target: string | string[] | ActorId;
+  target: ActorId | ActorId[];
 };
 
+// Message type
 export type Message = AddressedMessage<MessageType>;
 export type TargetMessage = TargetedMessage<MessageType>;
 
+// GenericMessage interface
 export type GenericMessage = {
   address: {
-    fm: string;
-    to: string | string[];
+    fm: ActorId;
+    to: ActorId | ActorId[];
   };
   type: string;
   payload: unknown;
 };
 
-type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
+// AcFnRet type
+type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
+
+// GenericActorFunctions type
 export type GenericActorFunctions = {
   readonly [key: string]: (payload: any) => AcFnRet;
 };
 
-export type Topic = string;
+// Actor interface to represent an actor in the system
+export interface ActorW {
+  worker: Worker;
+}
 
+// PairAddress interface
 export interface PairAddress {
   fm: string;
   to: string;
 }
 
+// NonArrayAddress type
 export type NonArrayAddress = PairAddress | SystemCommand | WorkerToSystem;
-
-// Type Guard to check if address is not an array
-export function notAddressArray(
-  address: Message["address"]
-): address is NonArrayAddress {
-  return !Array.isArray(address.to);
-}
-
-// Helper function to create properly typed actor state
-export function createActorState<T extends Record<string, any>>(data: T & { name: string }): T & BaseState {
-  return data as T & BaseState;
-}
 
 export type MessageFrom<T extends Record<string, (p: any) => any>> = {
   [K in keyof T]: {

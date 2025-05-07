@@ -1,11 +1,16 @@
 import { PostalService } from "./PostalService.ts";
-import type { GenericActorFunctions, Message, TargetMessage, ActorId } from "./types.ts";
-import { Signal, StandardizeAddress } from "./utils.ts";
+import type { GenericActorFunctions, Message, TargetMessage } from "./types.ts";
+import { processBigInts, StandardizeAddress } from "./utils.ts";
+import { Signal } from "./Signal.ts";
+
 
 // Map to store callbacks by UUID
 const callbackMap = new Map<string, Signal<unknown>>();
 
 export async function runFunctions(message: Message, functions: GenericActorFunctions, ctx: any) {
+  if (message.payload) {
+    message.payload = processBigInts(message.payload);
+  }
   // Extract the base type and any callback ID
   const parts = message.type.split(":");
   const baseType = parts[0];
@@ -72,7 +77,7 @@ export async function PostMessage(
 
   let worker;
   if (!ctx.worker) {
-    const actor = PostalService.actors.get(message.address.to as ActorId);
+    const actor = PostalService.actors.get(message.address.to);
     if (!actor) {
       console.error("Actor not found: ",message)
       throw new Error(`Actor not found: ${message.address.to}`);
