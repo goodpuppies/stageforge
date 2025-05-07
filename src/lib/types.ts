@@ -127,3 +127,16 @@ export function notAddressArray(
 export function createActorState<T extends Record<string, any>>(data: T & { name: string }): T & BaseState {
   return data as T & BaseState;
 }
+
+export type MessageFrom<T extends Record<string, (p: any) => any>> = {
+  [K in keyof T]: {
+    type: K;
+    payload: Parameters<T[K]>[0];
+    target: string | string[];
+  }
+}[keyof T];
+
+export type ReturnFrom<
+  T extends Record<string, (p: any) => any>,
+  M extends MessageFrom<T>
+> = ReturnType<T[M["type"]]>;

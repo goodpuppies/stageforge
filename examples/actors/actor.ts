@@ -1,21 +1,21 @@
 import { PostMan } from "../../src/mod.ts";
+import type { api as subfuncs } from "./sub.ts";
 
-// Simple state object without explicit type annotations
 const state = {
   name: "main" as string,
 };
-
-new PostMan(state, {
+export const api = {
   CUSTOMINIT: (payload: string) => {
     main(payload);
   },
   HELLO: (_payload: null) => {
     return "hi"
   },
-  LOG: (_payload: null) => {
+  LOG: (_payload: void) => {
     console.log("actor", state.id);
   }
-} as const);
+} as const
+new PostMan(state, api);
 
 async function main(_payload: string) {
 
@@ -27,11 +27,13 @@ async function main(_payload: string) {
     type: "LOG",
     payload: null,
   });
-
-  const string = await PostMan.PostMessage({
-    target: sub,
-    type: "GETSTRING",
-    payload: null,
-  }, true);
-  console.log(string)
+  while (true) {
+    const string = await PostMan.PostMessage<typeof subfuncs>({
+      target: sub,
+      type: "GETSTRING",
+      payload: null,
+    }, true);
+    console.log(string)
+    await new Promise(resolve => setTimeout(resolve, 5000))
+  }
 }

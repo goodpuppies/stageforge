@@ -2,8 +2,8 @@ import {
   type GenericActorFunctions,
   type tsfile,
   type BaseState,
-  type TargetMessage,
-  type Message,
+  type MessageFrom,
+  type ReturnFrom,
   System,
   type ActorId,
   type ActorInit,
@@ -61,18 +61,18 @@ export class PostMan {
     return result;
   }
 
-  static PostMessage(
-    message: TargetMessage | Message,
-    cb: true
-  ): Promise<unknown>;
-  static PostMessage(
-    message: TargetMessage | Message,
-    cb?: false
-  ): void;
-  static async PostMessage(
-    message: TargetMessage | Message,
-    cb?: boolean
-  ): Promise<unknown | void> {
-    return await PostMessage(message, cb, this);
+
+
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb?: false | undefined): void;
+  // Implementation
+  static PostMessage<
+    T extends Record<string, (payload: any) => any>
+  >(message: MessageFrom<T>, cb?: boolean): any {
+    return PostMessage(message as any, cb, this);
   }
 }

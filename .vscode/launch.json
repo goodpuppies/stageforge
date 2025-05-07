@@ -1,43 +1,46 @@
 {
   "version": "0.2.0",
-  "compounds": [
-    {
-      "name": "Debug Deno with Workers",
-      "configurations": [
-        "Main thread only",
-        "Attach Worker 1"
-      ]
-    }
-  ],
   "configurations": [
     {
-      "request": "launch",
-      "name": "Main thread only",
-      "type": "node",
-      "program": "${workspaceFolder}/examples/main.ts",
-      "cwd": "${workspaceFolder}/examples",
-      "console": "internalConsole",
-      "outputCapture": "std",
-      "autoAttachChildProcesses": true,
-      "env": {},
-      "runtimeExecutable": "Deno",
-      "runtimeArgs": [
-        "run",
-        "--inspect-wait",
-        "--allow-all"
-      ],
-      "attachSimplePort": 9229,
-
-    },
-    {
-      "name": "Attach Worker 1",
+      "name": "Attach worker #1",
       "type": "node",
       "request": "attach",
-      "port": 9229,
-      "address": "127.0.0.1",
-      "restart": false,
-      "attachExistingChildren": true,
-      "autoAttachChildProcesses": true
+      "websocketAddress": "ws://127.0.0.1:9229/ws/d0adc947-d77d-4e50-88ae-9b3af0f1c19f",
+      "generatedBy": "deno-worker-gen"
+    },
+    {
+      "name": "Attach worker #2",
+      "type": "node",
+      "request": "attach",
+      "websocketAddress": "ws://127.0.0.1:9229/ws/5fb6d944-b57b-4f1e-a733-7bcdbb531180",
+      "generatedBy": "deno-worker-gen"
+    },
+    {
+      "name": "Attach worker #3",
+      "type": "node",
+      "request": "attach",
+      "websocketAddress": "ws://127.0.0.1:9229/ws/96301cd7-47b8-48bc-9b8e-a387d7dac329",
+      "generatedBy": "deno-worker-gen"
+    },
+    {
+      "name": "Attach worker #4",
+      "type": "node",
+      "request": "attach",
+      "websocketAddress": "ws://127.0.0.1:9229/ws/0aaff5ba-daa1-4bae-8830-47c1ee023072",
+      "generatedBy": "deno-worker-gen"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Deno - Attach (ALL)",
+      "configurations": [
+        "Attach worker #1",
+        "Attach worker #2",
+        "Attach worker #3",
+        "Attach worker #4"
+      ],
+      "preLaunchTask": "genlaunch",
+      "generatedBy": "deno-worker-gen"
     }
   ]
 }

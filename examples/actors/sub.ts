@@ -4,7 +4,7 @@ const state = {
   name: "sub",
 };
 
-new PostMan(state, {
+export const api = {
   HELLO: (_payload: null) => {
     return "hi"
   },
@@ -14,4 +14,6 @@ new PostMan(state, {
   GETSTRING: (_payload: null) => {
     return "a"
   }
-} as const);
+} as const
+
+new PostMan(state, api);
