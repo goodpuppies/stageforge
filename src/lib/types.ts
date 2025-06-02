@@ -113,7 +113,7 @@ type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
 
 // GenericActorFunctions type
 export type GenericActorFunctions = {
-  readonly [key: string]: (payload: any) => AcFnRet;
+  readonly [key: string]: (payload: any, ctx?: any) => AcFnRet;
 };
 
 // Actor interface to represent an actor in the system

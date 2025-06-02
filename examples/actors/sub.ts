@@ -13,7 +13,8 @@ export const api = {
   LOG: (_payload: null) => {
     console.log("hello from", state.id);
   },
-  GETSTRING: (_payload: null) => {
+  GETSTRING: (_payload: null, ctx: any) => {
+    console.log(ctx.sender)
     return "some text"
   },
   ADD: (payload: { a: number, b: number }) => {

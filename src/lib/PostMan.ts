@@ -6,7 +6,8 @@ import {
   type ReturnFrom,
   System,
   type ActorId,
-  createTopicName
+  createTopicName,
+  Message
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
@@ -16,6 +17,7 @@ export class PostMan {
   private static functions = functions as GenericActorFunctions
   static worker: Worker = self as unknown as Worker;
   private static state: BaseState;
+  private static sender?: ActorId
 
   constructor(
     actorState: Record<string, any> & BaseState,
@@ -26,6 +28,8 @@ export class PostMan {
     PostMan.addressBook = actorState.addressBook;
     PostMan.functions = { ...PostMan.functions, ...functions };
     PostMan.worker.onmessage = (event: MessageEvent) => {
+      // awkward asf
+      PostMan.sender = (event.data as Message).address.fm
       runFunctions(event.data, PostMan.functions, PostMan)
     };
   }
@@ -78,14 +82,14 @@ export class PostMan {
   }
 
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any, ctx?: any) => any>
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any, ctx?: any) => any>
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   // Implementation
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any, ctx?: any) => any>
   >(message: MessageFrom<T>, cb?: boolean): any {
     return PostMessage(message as any, cb, this);
   }

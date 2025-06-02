@@ -25,7 +25,7 @@ interface custompayload {
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
-  public static lastSender: ActorId | null = null;
+  public sender?: ActorId
   public static debugMode = false;
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
   private callbackMap: Map<symbol, Signal<any>> = new Map();
@@ -68,12 +68,12 @@ export class PostalService {
     MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
     },
-    TOPICUPDATE: (payload: { delete: boolean, name: TopicName }) => {
+    TOPICUPDATE: (payload: { delete: boolean, name: TopicName }, ctx) => {
       const Dmode = payload.delete
       const topic = payload.name
       //#region get actor please refactor
-      // The actor ID is the sender of the message BAD CODE!!
-      const actorId = PostalService.lastSender as ActorId;
+
+      const actorId = ctx.sender
       if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
       const actor = PostalService.actors.get(actorId);
       //#endregion
@@ -158,9 +158,10 @@ export class PostalService {
   OnMessage = (message: Message): void => {
     LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
+    this.sender = message.address.fm
+    
     addresses.forEach((address) => {
       message.address.to = address;
-      // Don't modify the message type here anymore - let runFunctions handle it
       if (message.address.to === System) {
         runFunctions(message, this.functions, this)
       }
@@ -173,7 +174,6 @@ export class PostalService {
         (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
       }
     });
-    PostalService.lastSender = message.address.fm as ActorId;
   };
 
   doTopicUpdate(topic: Set<ActorId>, updater: ActorId, delmode: boolean) {

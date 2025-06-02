@@ -33,7 +33,7 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
   message.type = baseType;
 
   // Execute
-  const ret = await functions[baseType]?.(message.payload);
+  const ret = await functions[baseType]?.(message.payload, ctx);
 
   // If the function returned a value and we have a callback ID, send a response
   if (ret !== undefined) {
