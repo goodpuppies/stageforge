@@ -1,27 +1,18 @@
 import { Signal } from "./Signal.ts";
 import {
+  System,
+  type custompayload,
+  type WorkerConstructor,
   type Message,
   type MessageFrom,
   type ReturnFrom,
   type GenericActorFunctions,
-  System,
   type TopicName,
   type ActorId,
   type ActorW,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
-
-
-// Worker constructor type that matches the standard Worker constructor
-export type WorkerConstructor = new (
-  scriptURL: string | URL,
-  options?: WorkerOptions
-) => Worker;
-interface custompayload {
-  actorname: string;
-  base?: string | URL
-}
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
@@ -69,31 +60,27 @@ export class PostalService {
       PostalService.murder(payload);
     },
     TOPICUPDATE: (payload: { delete: boolean, name: TopicName }, ctx) => {
-      const Dmode = payload.delete
-      const topic = payload.name
-      //#region get actor please refactor
 
       const actorId = ctx.sender
       if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
       const actor = PostalService.actors.get(actorId);
-      //#endregion
 
       if (actor) {
-        if (Dmode) {
-          PostalService.topicRegistry.get(topic)?.delete(actorId);
+        if (payload.delete) {
+          PostalService.topicRegistry.get(payload.name)?.delete(actorId);
         } else {
-          if (!PostalService.topicRegistry.has(topic)) {
-            PostalService.topicRegistry.set(topic, new Set());
+          if (!PostalService.topicRegistry.has(payload.name)) {
+            PostalService.topicRegistry.set(payload.name, new Set());
           }
-          PostalService.topicRegistry.get(topic)?.add(actorId);
+          PostalService.topicRegistry.get(payload.name)?.add(actorId);
           if (PostalService.debugMode) {
-            console.log(`Registered actor ${actorId} to topic ${topic}`);
+            console.log(`Registered actor ${actorId} to topic ${payload.name}`);
           }
         }
       }
-      const tobj = PostalService.topicRegistry.get(topic)
+      const tobj = PostalService.topicRegistry.get(payload.name)
       if (!tobj) throw new Error("wat")
-      this.doTopicUpdate(tobj, actorId, Dmode)
+      this.doTopicUpdate(tobj, actorId, payload.delete)
     }
   };
 

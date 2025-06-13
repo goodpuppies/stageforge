@@ -142,3 +142,13 @@ export type ReturnFrom<
   T extends Record<string, (p: any) => any>,
   M extends MessageFrom<T>
 > = ReturnType<T[M["type"]]>;
+
+export type WorkerConstructor = new (
+  scriptURL: string | URL,
+  options?: WorkerOptions
+) => Worker;
+
+export interface custompayload {
+  actorname: string;
+  base?: string | URL
+}
