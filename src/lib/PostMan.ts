@@ -7,10 +7,14 @@ import {
   System,
   type ActorId,
   createTopicName,
-  Message
+  type Message,
+  type proxy
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
+import { assert } from "@goodpuppies/logicalassert";
+
+
 
 export class PostMan {
   private static addressBook: Set<ActorId>;
@@ -35,19 +39,39 @@ export class PostMan {
   }
 
 
-  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ActorId> {
-    //console.log("create", actorname)
+  static async create(actorname: tsfile | URL | typeof proxy, base?: tsfile | URL): Promise<ActorId> {
+    console.log("create", actorname)
     interface payload {
       actorname: tsfile | URL;
       base?: tsfile | URL
     }
-    let payload: payload
-    if (base) {
-      payload = { actorname, base }
-    }
-    else {
-      payload = {actorname}
-    }
+
+    
+    const payload = assert({actorname, base}).with({
+      proxyActor: {
+        condition:
+          actorname === "PROXY" &&
+          base === undefined,
+        exec: (_val:unknown) => {
+          return "PROXY"
+        },
+      },
+      base: {
+        condition: {actorname: 'string', base: 'string'},
+        exec: (val:{actorname: string, base: string}) => {
+          return { actorname: val.actorname, base: val.base };
+        },
+      },
+      actorOnly: {
+        condition: {actorname: 'string', base: 'undefined'},
+        exec: (val:{actorname: string}) => {
+          return { actorname: val.actorname };
+        },
+      },
+    });
+
+    console.log(payload)
+    
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",

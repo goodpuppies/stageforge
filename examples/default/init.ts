@@ -1,4 +1,4 @@
-import { PostalService } from "../src/mod.ts";
+import { PostalService } from "../../src/mod.ts";
 
 const postalservice = new PostalService();
 

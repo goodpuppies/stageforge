@@ -10,9 +10,13 @@ import {
   type TopicName,
   type ActorId,
   type ActorW,
+  reverseProxy,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
+import { assert } from "@goodpuppies/logicalassert";
+import { WsClientProxyWorker } from "../../../WebsockWorker/WsClientProxyWorker.ts"
+import { WsClientWorker } from "../../../WebsockWorker/WsClientWorker.ts"
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
@@ -35,8 +39,8 @@ export class PostalService {
   public functions: GenericActorFunctions = {
 
     CREATE: async (payload: custompayload ) => {
-
-      const id = await this.add(payload.actorname, payload.base);
+      console.log(payload)
+      const id = await this.add(payload);
       LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
@@ -84,54 +88,133 @@ export class PostalService {
     }
   };
 
-  async add(address: string, base?: string | URL): Promise<ActorId> {
-    LogChannel.log("postalserviceCreate", "creating", address);
+
+  async add(file: {address: string, base?: string | URL} | reverseProxy): Promise<ActorId> {
+    LogChannel.log("postalserviceCreate", "creating", file);
     // Resolve relative to Deno.cwd()
+    console.log(file)
 
-    let workerUrl: string;
-    if (typeof Deno !== 'undefined') {
-      workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
-    } else {
-      const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
-      workerUrl = new URL(address, baseUrl).href;
-    }
-
-    const worker: Worker = new PostalService.WorkerClass(
-      workerUrl,
-      { name: address, type: "module" }
-    );
-    worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
+    const id = await assert(file).with({
+      "PROXY": () => {
+        console.log("creating proxy")
+        
+        const worker: Worker = new WsClientProxyWorker({port: 9992});
+        console.log("created proxy")
+        worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
 
 
-    const callbackKey = Symbol('actor-creation');
-    const actorSignal = new Signal<ActorId>();
-    this.callbackMap.set(callbackKey, actorSignal);
+        // Create an Actor object
 
-    // Send the INIT message with the callback key in the payload
-    worker.postMessage({
-      address: { fm: System, to: "WORKER" },
-      type: "INIT",
-      payload: {
-        callbackKey: callbackKey.toString(),
-        originalPayload: null
+        const id = "UNASSIGNED" as ActorId
+        console.log("created actor")
+        const actor: ActorW = {
+          worker
+        };
+        PostalService.actors.set(id, actor);
+        return id
       },
-    });
+      reverseProxy: {
+        condition: {address: 'string', url: 'string'},
+        exec: async (val:{address: string, url: string}) => {
+          let scriptFileUrl: string;
+          let cleanPath = val.address.replace(/\\/g, '/'); // Normalize to forward slashes
+
+          if (cleanPath.startsWith('file:///')) {
+            scriptFileUrl = cleanPath;
+          } else if (cleanPath.match(/^[a-zA-Z]:\//)) { // Starts with a drive letter like C:/
+            scriptFileUrl = `file:///${cleanPath}`;
+          } else if (cleanPath.startsWith('/')) { // Absolute Unix-like path
+            scriptFileUrl = `file://${cleanPath}`;
+          } else {
+            // Fallback for potentially relative paths, though val.address seems absolute here
+            console.warn(`[PostalService] Worker script path '${val.address}' does not appear to be a recognized absolute path or file URL. Attempting to resolve relative to module.`);
+            scriptFileUrl = new URL(val.address, import.meta.url).href;
+          }
+
+          const worker: Worker = new WsClientWorker(scriptFileUrl, val.url, { name: val.address, type: "module" });
+
+          worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
+    
+    
+          const callbackKey = Symbol('actor-creation');
+          const actorSignal = new Signal<ActorId>();
+          this.callbackMap.set(callbackKey, actorSignal);
+      
+          // Send the INIT message with the callback key in the payload
+          worker.postMessage({
+            address: { fm: System, to: "WORKER" },
+            type: "INIT",
+            payload: {
+              callbackKey: callbackKey.toString(),
+              originalPayload: null
+            },
+          });
+          
+          // Create an Actor object
+  
+          const id = await actorSignal.wait(); //id
+          this.callbackMap.delete(callbackKey);
+          const actor: ActorW = {
+            worker
+          };
+          PostalService.actors.set(id, actor);
+          return id
+
+        },
+      },
+      object: async (file: {address: string, base?: string | URL}) => {
+
+        const workerUrl = assert(typeof Deno).with({
+          object: () => {return new URL(file.address, file.base ?? `file://${Deno.cwd()}/`).href;},
+          undefined: () => {
+            const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
+            return new URL(file.address, baseUrl).href;
+          }
+        })
 
 
-    const id = await actorSignal.wait();
+        
+        const worker: Worker = new PostalService.WorkerClass(
+          workerUrl,
+          { name: file.address, type: "module" }
+        );
+        worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
+    
+    
+        const callbackKey = Symbol('actor-creation');
+        const actorSignal = new Signal<ActorId>();
+        this.callbackMap.set(callbackKey, actorSignal);
+    
+        // Send the INIT message with the callback key in the payload
+        worker.postMessage({
+          address: { fm: System, to: "WORKER" },
+          type: "INIT",
+          payload: {
+            callbackKey: callbackKey.toString(),
+            originalPayload: null
+          },
+        });
+        
+        // Create an Actor object
 
+        const id = await actorSignal.wait(); //id
+        this.callbackMap.delete(callbackKey);
+        const actor: ActorW = {
+          worker
+        };
+        PostalService.actors.set(id, actor);
+        return id
+      }
+    })
+        
+    
 
-    this.callbackMap.delete(callbackKey);
-
+    
     LogChannel.log("postalserviceCreate", "created", id);
 
-    // Create an Actor object
-    const actor: ActorW = {
-      worker
-    };
 
-    PostalService.actors.set(id, actor);
     return id;
+
   }
 
   static murder(address: ActorId) {

@@ -39,6 +39,13 @@ export const System = "SYSTEM" as ActorId;
 
 export type SystemType = typeof System;
 
+export const proxy = "PROXY" as string & { readonly __proxy: unique symbol };
+
+export interface reverseProxy {
+  address: string,
+  url?: string | URL
+}
+
 // Message Address Interfaces
 
 // SystemCommand interface
@@ -148,7 +155,7 @@ export type WorkerConstructor = new (
   options?: WorkerOptions
 ) => Worker;
 
-export interface custompayload {
-  actorname: string;
+export type custompayload = {
+  address: string;
   base?: string | URL
-}
+} | reverseProxy

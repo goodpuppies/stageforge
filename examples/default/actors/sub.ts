@@ -1,5 +1,5 @@
-import { PostMan, actorState } from "../../src/mod.ts";
-import { wait } from "../../src/lib/utils.ts";
+import { PostMan, actorState } from "../../../src/mod.ts";
+import { wait } from "../../../src/lib/utils.ts";
 
 const state = actorState({
   name: "sub",
