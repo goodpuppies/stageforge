@@ -2,16 +2,6 @@ StageForge is a TypeScript library that simplifies creating and managing actor-b
 
 Mainly used in https://github.com/goodpuppies/petplay
 
-## Installation
-
-```ts
-import { PostalService, PostMan } from "jsr:@goodpuppies/stageforge";
-```
-or on the web
-```ts
-import { PostalService, PostMan } from "https://esm.sh/jsr/@goodpuppies/stageforge@0.1.0";
-```
-
 ## Basic Usage
 
 ### main.ts - Create the coordinator
