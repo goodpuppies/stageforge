@@ -20,7 +20,7 @@ async function runTestSuite() {
     const coordinatorActorPath = new URL('./main-test-coordinator.ts', import.meta.url).href;
     testReportDiv.innerHTML += `<p>Adding Main Test Coordinator from: ${coordinatorActorPath}</p>`;
     
-    const coordinatorAddress = await postalService.add(coordinatorActorPath);
+    const coordinatorAddress = await postalService.add({address: coordinatorActorPath});
     testReportDiv.innerHTML += `<p>Main Test Coordinator added with address: ${coordinatorAddress}</p>`;
 
     testReportDiv.innerHTML += `<p>Sending RUN_TEST_SUITE command to coordinator...</p>`;

@@ -10,7 +10,7 @@ import {
   type TopicName,
   type ActorId,
   type ActorW,
-  reverseProxy,
+  type reverseProxy,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
@@ -164,6 +164,7 @@ export class PostalService {
       },
       object: async (file: {address: string, base?: string | URL}) => {
 
+        console.log("jhmm",file)
         const workerUrl = assert(typeof Deno).with({
           object: () => {return new URL(file.address, file.base ?? `file://${Deno.cwd()}/`).href;},
           undefined: () => {
@@ -173,7 +174,7 @@ export class PostalService {
         })
 
 
-        
+        console.log("creating worker", workerUrl)
         const worker: Worker = new PostalService.WorkerClass(
           workerUrl,
           { name: file.address, type: "module" }

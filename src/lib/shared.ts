@@ -1,7 +1,8 @@
 import { PostalService } from "./PostalService.ts";
-import type { GenericActorFunctions, Message, TargetMessage } from "./types.ts";
+import type { ActorId, GenericActorFunctions, Message, TargetMessage } from "./types.ts";
 import { processBigInts, StandardizeAddress } from "./utils.ts";
 import { Signal } from "./Signal.ts";
+import { assert } from "@goodpuppies/logicalassert";
 
 
 // Map to store callbacks by UUID
@@ -54,7 +55,7 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
 export async function PostMessage(
   message: TargetMessage | Message,
   cb?: boolean,
-  ctx?: any
+  ctx?: object
 ): Promise<unknown | void> {
   if ('target' in message && Array.isArray(message.target)) {
     if (cb) {
@@ -75,18 +76,21 @@ export async function PostMessage(
     throw new Error("PostMessage in shared.ts should not receive array addresses. Use the PostalService.PostMessage method for that.");
   }
 
-  let worker;
-  if (!ctx.worker) {
-    const actor = PostalService.actors.get(message.address.to);
-    if (!actor) {
-      console.error("Actor not found: ",message)
-      throw new Error(`Actor not found: ${message.address.to}`);
+  assert(!ctx)
+
+  const worker = assert(!ctx.worker).with({
+    true: () => {
+      const actor = PostalService.actors.get(message.address.to as ActorId);
+      if (!actor) {
+        console.error("Actor not found: ", message)
+        throw new Error(`Actor not found: ${message.address.to}`);
+      }
+      return actor.worker;
+    },
+    unknown: () => {
+      return ctx.worker;
     }
-    worker = actor.worker;
-  }
-  else {
-    worker = ctx.worker;
-  }
+  })
 
   if (cb) {
     // Generate a UUID for this callback

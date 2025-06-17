@@ -39,38 +39,36 @@ export class PostMan {
   }
 
 
-  static async create(actorname: tsfile | URL | typeof proxy, base?: tsfile | URL): Promise<ActorId> {
-    console.log("create", actorname)
+  static async create(address: tsfile | URL | typeof proxy, base?: tsfile | URL): Promise<ActorId> {
+    console.log("create", address)
     interface payload {
-      actorname: tsfile | URL;
+      address: tsfile | URL;
       base?: tsfile | URL
     }
 
     
-    const payload = assert({actorname, base}).with({
+    const payload = assert({ address, base}).with({
       proxyActor: {
         condition:
-          actorname === "PROXY" &&
+          address === "PROXY" &&
           base === undefined,
         exec: (_val:unknown) => {
           return "PROXY"
         },
       },
       base: {
-        condition: {actorname: 'string', base: 'string'},
-        exec: (val:{actorname: string, base: string}) => {
-          return { actorname: val.actorname, base: val.base };
+        condition: { address: 'string', base: 'string'},
+        exec: (val: { address: string, base: string}) => {
+          return { address: val.address, base: val.base };
         },
       },
       actorOnly: {
-        condition: {actorname: 'string', base: 'undefined'},
-        exec: (val:{actorname: string}) => {
-          return { actorname: val.actorname };
+        condition: {address: 'string', base: 'undefined'},
+        exec: (val:{address: string}) => {
+          return { address: val.address };
         },
       },
     });
-
-    console.log(payload)
     
     const result = await PostMan.PostMessage({
       target: System,
