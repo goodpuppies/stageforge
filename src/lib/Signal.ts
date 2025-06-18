@@ -1,14 +1,15 @@
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 export class Signal<T> {
+  // deno-lint-ignore no-explicit-any
   private static registry: Map<string, Signal<any>> = new Map();
 
   private resolve: ((value: T) => void) | null = null;
-  private reject: ((reason?: any) => void) | null = null;
+  private reject: ((reason?: unknown) => void) | null = null;
   private promise: Promise<T>;
 
   public readonly id: string;
   private name: string;
-  private timeoutId?: number | NodeJS.Timeout;
+  private timeoutId?: number;
 
   constructor(name: string, timeout?: number) {
     this.id = crypto.randomUUID();
@@ -53,7 +54,7 @@ export class Signal<T> {
     this.reject = null;
   }
 
-  public static trigger(id: string, value: any): void {
+  public static trigger(id: string, value: unknown): void {
     const signal = Signal.registry.get(id);
     if (signal) {
       LogChannel.log("signal", "triggering", signal.name);

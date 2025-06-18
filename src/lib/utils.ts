@@ -32,24 +32,24 @@ export function StandardizeAddress(
   return addressedMessage;
 }
 
-export function processBigInts(data: any): any {
+export function processBigInts<T>(data: T): T {
   if (data === null || data === undefined) {
     return data;
   }
   if (typeof data === "object") {
-    if (data !== null && "__bigint__" in data) {
-      return BigInt(data.__bigint__);
+    if (data !== null && typeof (data as any).__bigint__ === "string") {
+      return BigInt((data as any).__bigint__) as unknown as T;
     }
 
     if (Array.isArray(data)) {
-      return data.map((item) => processBigInts(item));
+      return data.map((item) => processBigInts(item)) as unknown as T;
     }
 
-    const result: Record<string, any> = {};
-    for (const key in data) {
-      result[key] = processBigInts(data[key]);
+    const result: Record<string, unknown> = {};
+    for (const key in data as Record<string, unknown>) {
+      result[key] = processBigInts((data as Record<string, unknown>)[key]);
     }
-    return result;
+    return result as T;
   }
 
   return data;

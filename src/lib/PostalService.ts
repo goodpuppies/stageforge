@@ -230,6 +230,7 @@ export class PostalService {
         if (!PostalService.actors.has(message.address.to)) {
           const actor = PostalService.actors.get(message.address.fm);
 
+          // deno-lint-ignore no-explicit-any
           if ((actor as any).worker.modded) {
             return
           }
@@ -245,15 +246,15 @@ export class PostalService {
   };
 
   PostMessage<
-    T extends Record<string, (payload: any) => any>,
+    T extends Record<string, (payload: unknown) => unknown>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   PostMessage<
-    T extends Record<string, (payload: any) => any>,
+    T extends Record<string, (payload: unknown) => unknown>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   PostMessage<
-    T extends Record<string, (payload: any) => any>,
-  >(message: MessageFrom<T>, cb?: boolean): any {
-    return PostMessage(message as any, cb, this);
+    T extends Record<string, (payload: unknown) => unknown>,
+  >(message: MessageFrom<T>, cb?: boolean): unknown {
+    return PostMessage(message, cb, this);
   }
 
   //#endregion

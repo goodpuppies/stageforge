@@ -56,7 +56,7 @@ export async function runFunctions(
 export async function PostMessage(
   message: TargetMessage | Message,
   cb?: boolean,
-  ctx?: object,
+  ctx?: any,
 ): Promise<unknown | void> {
   if ("target" in message && Array.isArray(message.target)) {
     if (cb) {

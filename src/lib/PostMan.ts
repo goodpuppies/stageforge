@@ -21,7 +21,7 @@ export class PostMan {
   private static sender?: ActorId;
 
   constructor(
-    actorState: Record<string, any> & BaseState,
+    actorState: Record<string, unknown> & BaseState,
     functions: GenericActorFunctions,
   ) {
     PostMan.state = actorState;
@@ -92,15 +92,15 @@ export class PostMan {
   }
 
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>,
+    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>,
+    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   // Implementation
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>,
-  >(message: MessageFrom<T>, cb?: boolean): any {
-    return PostMessage(message as any, cb, this);
+    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
+  >(message: MessageFrom<T>, cb?: boolean): unknown {
+    return PostMessage(message, cb, this);
   }
 }

@@ -143,7 +143,7 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
   [K in keyof T]: {
     type: K;
     payload: Parameters<T[K]>[0];
-    target: string | string[];
+    target: ActorId | ActorId[];
   };
 }[keyof T];
 
