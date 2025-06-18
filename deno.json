@@ -12,5 +12,8 @@
     "ws": "cd examples/websocket/local && deno task t1 & deno task t2",
     "t1": "deno run -A ./examples/websocket/local/init.ts",
     "t2": "deno run -A ./examples/websocket/browser/init.ts"
+  },
+  "fmt": {
+    "lineWidth": 300
   }
 }

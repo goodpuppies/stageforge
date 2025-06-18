@@ -2,11 +2,8 @@ import { PostalService } from "../../src/mod.ts";
 
 const postalservice = new PostalService();
 
-const mainAddress = await postalservice.add({address: "./actors/actor.ts"});
+PostalService.debugMode = true;
 
-const string = await postalservice.PostMessage({
-  target: mainAddress,
-  type: "HELLO",
-  payload: null,
-}, true);
-console.log(string)
+await postalservice.functions.CREATE({ file: "./actors/actor.ts" });
+
+

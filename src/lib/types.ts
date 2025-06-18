@@ -8,8 +8,13 @@ export type TopicName = string & { readonly __topicName: unique symbol };
 
 export function createActorId(value: string): ActorId {
   // Validate format: name@uuid
-  if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    throw new Error(`Invalid ActorId format: ${value}. Must be in the format name@uuid`);
+  if (
+    !/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      .test(value)
+  ) {
+    throw new Error(
+      `Invalid ActorId format: ${value}. Must be in the format name@uuid`,
+    );
   }
   return value as ActorId;
 }
@@ -39,11 +44,9 @@ export const System = "SYSTEM" as ActorId;
 
 export type SystemType = typeof System;
 
-export const proxy = "PROXY" as string & { readonly __proxy: unique symbol };
-
 export interface reverseProxy {
-  address: string,
-  url?: string | URL
+  address: string;
+  url?: string | URL;
 }
 
 // Message Address Interfaces
@@ -69,18 +72,17 @@ export interface MessageAddressArray {
   to: string | string[];
 }
 
-
 // Union of all possible message addresses
 export type MessageAddress = MessageAddressSingle | MessageAddressArray;
 
 // MessageType type
-export type MessageType = GenericMessage
+export type MessageType = GenericMessage;
 
 // CallbackType type
 type CallbackType<T extends string> = `CB:${T}`;
 
 // tsfile type
-export type tsfile = string
+export type tsfile = string;
 
 // BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
@@ -92,7 +94,7 @@ export type BaseMessage<K extends MessageType> = {
 export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
   address: {
     fm: ActorId;
-    to: ActorId | ActorId[]
+    to: ActorId | ActorId[];
   };
 };
 
@@ -116,11 +118,11 @@ export type GenericMessage = {
 };
 
 // AcFnRet type
-type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
+type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
 
 // GenericActorFunctions type
 export type GenericActorFunctions = {
-  readonly [key: string]: (payload: any, ctx?: any) => AcFnRet;
+  [key: string]: (payload: any, ctx?: any) => AcFnRet;
 };
 
 // Actor interface to represent an actor in the system
@@ -142,20 +144,20 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
     type: K;
     payload: Parameters<T[K]>[0];
     target: string | string[];
-  }
+  };
 }[keyof T];
 
 export type ReturnFrom<
   T extends Record<string, (p: any) => any>,
-  M extends MessageFrom<T>
+  M extends MessageFrom<T>,
 > = ReturnType<T[M["type"]]>;
 
 export type WorkerConstructor = new (
   scriptURL: string | URL,
-  options?: WorkerOptions
+  options?: WorkerOptions,
 ) => Worker;
 
 export type custompayload = {
-  address: string;
-  base?: string | URL
-} | reverseProxy
+  file: string;
+  base?: string | URL;
+} | "PROXY"

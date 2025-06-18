@@ -1,7 +1,7 @@
-import { PostMan, actorState } from "../../../../src/mod.ts";
+import { actorState, PostMan } from "../../../../src/mod.ts";
 
 const state = actorState({
-  name: "main" as string,
+  name: "mainbrowser" as string,
 });
 
 export const api = {
@@ -9,12 +9,10 @@ export const api = {
     main(payload);
   },
   REQUEST: (_payload: null) => {
-    return "hi";
+    return "secretdata";
   },
-} as const
+} as const;
 new PostMan(state, api);
 
 async function main(_payload: string) {
-
-
 }

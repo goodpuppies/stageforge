@@ -5,7 +5,7 @@ export class Signal<T> {
   private id: symbol;
 
   constructor() {
-    this.id = Symbol('signal');
+    this.id = Symbol("signal");
     this.promise = new Promise((res) => {
       this.resolve = res;
     });
@@ -17,7 +17,11 @@ export class Signal<T> {
 
   trigger(value: T): void {
     if (this.resolve) {
-      LogChannel.log("signal", `signal ${this.id.toString()} triggered with value:`, value);
+      LogChannel.log(
+        "signal",
+        `signal ${this.id.toString()} triggered with value:`,
+        value,
+      );
       this.resolve(value);
     }
   }

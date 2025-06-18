@@ -1,7 +1,7 @@
-import { WsClientProxyWorker } from "../../../../WebsockWorker/WsClientProxyWorker.ts"
 import { PostalService } from "../../../src/mod.ts";
 
 const postalservice = new PostalService();
 
-postalservice.add({address: "examples/websocket/local/actors/localmain.ts"});
+PostalService.debugMode = true;
 
+postalservice.functions.CREATE({ file: "examples/websocket/local/actors/localmain.ts"});
