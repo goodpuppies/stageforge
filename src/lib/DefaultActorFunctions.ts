@@ -7,11 +7,13 @@ import { LogChannel } from "@mommysgoodpuppy/logchannel";
 
 export const functions = {
   //initialize actor
-  INIT: (payload: { callbackKey: string, originalPayload: string | null } | null) => {
+  INIT: (payload: { callbackKey: string, originalPayload: string | null, parentId: ActorId | null } | null) => {
     //@ts-expect-error PostMan.state is internal
     const rawId = `${PostMan.state?.name}@${crypto.randomUUID()}`;
     //@ts-expect-error PostMan.state is internal
     PostMan.state.id = createActorId(rawId);
+    //@ts-expect-error PostMan.state is internal
+    PostMan.state.parent = payload?.parentId || null;
     const callbackKey = payload?.callbackKey || '';
     PostMan.PostMessage({
       //@ts-expect-error PostMan.state is internal
@@ -26,7 +28,7 @@ export const functions = {
     // @ts-ignore: get custominit from importer
     PostMan.functions.__INIT__?.(payload?.originalPayload || null, PostMan.state.id);
     //@ts-expect-error PostMan.state is internal
-    LogChannel.log("postmanCreate", `initialized ${PostMan.state.id} actor with args:`, payload?.originalPayload || null);
+    LogChannel.log("postmanCreate", `initialized ${PostMan.state.id} actor with parent ${PostMan.state.parent} and args:`, payload?.originalPayload || null);
   },
   //terminate
   SHUT: (_payload: null) => {

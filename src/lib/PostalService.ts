@@ -20,7 +20,8 @@ export type WorkerConstructor = new (
 ) => Worker;
 interface custompayload {
   actorname: string;
-  base?: string | URL
+  base?: string | URL;
+  parentOverride?: ActorId;
 }
 
 export class PostalService {
@@ -43,9 +44,11 @@ export class PostalService {
 
   public functions: GenericActorFunctions = {
 
-    CREATE: async (payload: custompayload ) => {
+    CREATE: async (payload: custompayload, ctx: any) => {
+      const parentId = payload.parentOverride ?? ctx.sender as ActorId | null;
+      console.log("create called by:", parentId, "override:", payload.parentOverride);
 
-      const id = await this.add(payload.actorname, payload.base);
+      const id = await this.add(payload.actorname, payload.base, parentId);
       LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
@@ -97,7 +100,7 @@ export class PostalService {
     }
   };
 
-  async add(address: string, base?: string | URL): Promise<ActorId> {
+  async add(address: string, base?: string | URL, parentId: ActorId | null = null): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
 
@@ -126,7 +129,8 @@ export class PostalService {
       type: "INIT",
       payload: {
         callbackKey: callbackKey.toString(),
-        originalPayload: null
+        originalPayload: null,
+        parentId: parentId,
       },
     });
 

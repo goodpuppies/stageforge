@@ -6,8 +6,7 @@ import {
   type ReturnFrom,
   System,
   type ActorId,
-  createTopicName,
-  Message
+  createTopicName
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
@@ -35,18 +34,19 @@ export class PostMan {
   }
 
 
-  static async create(actorname: tsfile | URL, base?: tsfile | URL): Promise<ActorId> {
+  static async create(actorname: tsfile | URL, base?: tsfile | URL, parentOverride?: ActorId): Promise<ActorId> {
     //console.log("create", actorname)
     interface payload {
       actorname: tsfile | URL;
-      base?: tsfile | URL
+      base?: tsfile | URL;
+      parentOverride?: ActorId;
     }
     let payload: payload
     if (base) {
-      payload = { actorname, base }
+      payload = { actorname, base, parentOverride }
     }
     else {
-      payload = {actorname}
+      payload = {actorname, parentOverride}
     }
     const result = await PostMan.PostMessage({
       target: System,

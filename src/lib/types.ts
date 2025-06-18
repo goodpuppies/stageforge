@@ -22,6 +22,7 @@ export function createTopicName(name: string): TopicName {
 export interface BaseState {
   name: string;
   id: ActorId;
+  parent: ActorId | null;
   addressBook: Set<ActorId>;
   topics: Set<TopicName>;
 }
@@ -29,6 +30,7 @@ export interface BaseState {
 export function actorState<T extends object>(state: T): T & BaseState {
   return {
     id: "",
+    parent: null,
     addressBook: new Set(),
     topics: new Set(),
     ...state,
