@@ -1,28 +1,66 @@
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 export class Signal<T> {
-  private resolve: ((value: T) => void) | null = null;
-  private promise: Promise<T> | null = null;
-  private id: symbol;
+  private static registry: Map<string, Signal<any>> = new Map();
 
-  constructor() {
-    this.id = Symbol("signal");
-    this.promise = new Promise((res) => {
+  private resolve: ((value: T) => void) | null = null;
+  private reject: ((reason?: any) => void) | null = null;
+  private promise: Promise<T>;
+
+  public readonly id: string;
+  private name: string;
+  private timeoutId?: number | NodeJS.Timeout;
+
+  constructor(name: string, timeout?: number) {
+    this.id = crypto.randomUUID();
+    this.name = name;
+
+    this.promise = new Promise((res, rej) => {
       this.resolve = res;
+      this.reject = rej;
     });
+
+    Signal.registry.set(this.id, this);
+
+    if (timeout) {
+      this.timeoutId = setTimeout(() => {
+        this.reject?.(
+          new Error(`Signal '${this.name}' (${this.id}) timed out after ${timeout}ms`),
+        );
+      }, timeout);
+    }
   }
 
   wait(): Promise<T> {
-    return this.promise!;
+    // This ensures cleanup happens even if the consumer doesn't `await` or `.then` the promise.
+    return this.promise.finally(() => this.destroy());
   }
 
-  trigger(value: T): void {
+  private trigger(value: T): void {
     if (this.resolve) {
       LogChannel.log(
         "signal",
-        `signal ${this.id.toString()} triggered with value:`,
+        `Signal '${this.name}' (${this.id}) triggered with value:`,
         value,
       );
       this.resolve(value);
+    }
+  }
+
+  private destroy(): void {
+    if (this.timeoutId) clearTimeout(this.timeoutId);
+    Signal.registry.delete(this.id);
+    this.resolve = null;
+    this.reject = null;
+  }
+
+  public static trigger(id: string, value: any): void {
+    const signal = Signal.registry.get(id);
+    if (signal) {
+      LogChannel.log("signal", "triggering", signal.name);
+      signal.trigger(value);
+    } else {
+      console.error("stale signal triggered", id);
+      //throw new Error("stale signal triggered")
     }
   }
 }

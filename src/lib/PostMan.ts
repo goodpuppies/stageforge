@@ -36,7 +36,7 @@ export class PostMan {
   }
 
   static async create(
-    file: tsfile | URL | "PROXY",
+    file: tsfile | URL,
     base?: tsfile | URL,
   ): Promise<ActorId> {
     console.log("create", file);
@@ -44,15 +44,7 @@ export class PostMan {
       file: tsfile | URL;
       base?: tsfile | URL;
     }
-
     const payload = assert({ file, base }).with({
-      proxyActor: {
-        condition: file === "PROXY" &&
-          base === undefined,
-        exec: (_val: unknown) => {
-          return "PROXY";
-        },
-      },
       base: {
         condition: { file: "string", base: "string" },
         exec: (val: { file: string; base: string }) => {
@@ -66,7 +58,6 @@ export class PostMan {
         },
       },
     });
-
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",

@@ -15,15 +15,14 @@ import {
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { assert } from "@goodpuppies/logicalassert";
-import { WsClientProxyWorker } from "../../../WebsockWorker/WsClientProxyWorker.ts";
-import { WsClientWorker } from "../../../WebsockWorker/WsClientWorker.ts";
+
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
   public sender?: ActorId;
   public static debugMode = false;
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
-  private callbackMap: Map<symbol, Signal<any>> = new Map();
+  
   private static WorkerClass: WorkerConstructor = Worker;
 
   // Constructor that accepts a custom Worker implementation
@@ -34,15 +33,16 @@ export class PostalService {
     }
   }
 
+  public register(newFunctions: GenericActorFunctions) {
+    this.functions = { ...this.functions, ...newFunctions };
+  }
+
   public functions:GenericActorFunctions = {
     CREATE: async (payload: custompayload) => {
 
       const id = await assert(payload).with({
         object: async (payload: { file: string; base?: string | URL }) => {
           return await this.add(payload)
-        },
-        "PROXY": async () => {
-          return await this.functions.CREATEWSPROXY(null, this)
         }
       })
 
@@ -51,13 +51,7 @@ export class PostalService {
     },
     LOADED: (payload: { actorId: ActorId; callbackKey: string }) => {
       LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
-      for (const [key, signal] of this.callbackMap.entries()) {
-        if (key.toString() === payload.callbackKey) {
-          signal.trigger(payload.actorId);
-          return;
-        }
-      }
-      throw new Error("LOADED message received but no matching callback found");
+      Signal.trigger(payload.callbackKey, payload.actorId);
     },
     DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
@@ -65,65 +59,9 @@ export class PostalService {
     MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
     },
-    TOPICUPDATE: (payload: { delete: boolean; name: TopicName }, ctx: PostalService) => {
-      this.topicUpdate(payload, ctx);
-    },
-    //#region websocket
-    CREATEWSCLIENT: async ({ file, url }: { file: string, url: string }) => {
-
-      const fileUrl = new URL(file, `file://${Deno.cwd()}/`).href;
-      const worker = new WsClientWorker(fileUrl, url, { name: file, type: "module" }) as Worker
-
-      worker.onmessage = (event: MessageEvent<Message>) => {
-        this.OnMessage(event.data);
-      };
-
-      const callbackKey = Symbol("actor-creation");
-      const actorSignal = new Signal<ActorId>();
-      this.callbackMap.set(callbackKey, actorSignal);
-
-      // Send the INIT message with the callback key in the payload
-      worker.postMessage({
-        address: { fm: System, to: "WORKER" },
-        type: "INIT",
-        payload: {
-          callbackKey: callbackKey.toString(),
-          originalPayload: null,
-        },
-      });
-
-      const id = await actorSignal.wait(); //id
-      this.callbackMap.delete(callbackKey);
-      const actor: ActorW = {
-        worker,
-      };
-      PostalService.actors.set(id, actor);
-      return id;
-    },
-    CREATEWSPROXY: async () => {
-      console.log("creating proxy");
-
-      const worker: Worker = new WsClientProxyWorker({ port: 9992 });
-      console.log("created proxy");
-      worker.onmessage = (event: MessageEvent<Message>) => {
-        this.OnMessage(event.data);
-      };
-
-      const callbackKey = Symbol("actor-creation");
-      const actorSignal = new Signal<ActorId>();
-      this.callbackMap.set(callbackKey, actorSignal);
-
-      // Create an Actor object 
-      // we need to keep track of this so should be uuid
-      const id = await actorSignal.wait() as ActorId;
-      console.log("created actor");
-      const actor: ActorW = {
-        worker,
-      };
-      PostalService.actors.set(id, actor);
-      return id;
-    },
-    //#endregion
+    TOPICUPDATE: async (payload: { delete: boolean; name: TopicName }, ctx: PostalService) => {
+      await this.topicUpdate(payload, ctx);
+    }
   };
 
   private async add(input: { file: string; base?: string | URL } | reverseProxy): Promise<ActorId> {
@@ -156,24 +94,20 @@ export class PostalService {
           this.OnMessage(event.data);
         };
 
-        const callbackKey = Symbol("actor-creation");
-        const actorSignal = new Signal<ActorId>();
-        this.callbackMap.set(callbackKey, actorSignal);
+        const actorSignal = new Signal<ActorId>("actor-creation", 1000);
 
         // Send the INIT message with the callback key in the payload
         worker.postMessage({
           address: { fm: System, to: "WORKER" },
           type: "INIT",
           payload: {
-            callbackKey: callbackKey.toString(),
+            callbackKey: actorSignal.id,
             originalPayload: null,
           },
         });
 
         // Create an Actor object
-
         const id = await actorSignal.wait(); //id
-        this.callbackMap.delete(callbackKey);
         const actor: ActorW = {
           worker,
         };
@@ -197,12 +131,27 @@ export class PostalService {
   }
 
   //#region topic system
-  topicUpdate(payload: { delete: boolean; name: TopicName }, ctx: PostalService) {
-    const { actorId, actor } = assert(ctx.sender).with({
+  async topicUpdate(payload: { delete: boolean; name: TopicName }, ctx: PostalService) {
+    const actorId = assert(ctx.sender).with({
       string: (actorId: ActorId) => {
-        return { actorId, actor: PostalService.actors.get(actorId) };
+        return actorId;
       },
     });
+
+    let actor = PostalService.actors.get(actorId);
+    const timeout = 1000; // 1 second timeout
+    const pollInterval = 50; // 50 ms
+    let elapsedTime = 0;
+
+    while (!actor && elapsedTime < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      actor = PostalService.actors.get(actorId);
+      elapsedTime += pollInterval;
+    }
+
+    if (!actor) {
+      throw new Error(`topicUpdate timed out waiting for actor ${actorId} to be registered.`);
+    }
 
     assert(actor).with({
       actorWorker: {
@@ -279,6 +228,12 @@ export class PostalService {
         runFunctions(message, this.functions, this);
       } else {
         if (!PostalService.actors.has(message.address.to)) {
+          const actor = PostalService.actors.get(message.address.fm);
+
+          if ((actor as any).worker.modded) {
+            return
+          }
+          
           console.error("postal service does not have: ", message.address.to);
           console.error("debugmode: ", PostalService.debugMode);
           console.error("fullmsg:", message);

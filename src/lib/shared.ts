@@ -4,8 +4,7 @@ import { processBigInts, StandardizeAddress } from "./utils.ts";
 import { Signal } from "./Signal.ts";
 import { assert } from "@goodpuppies/logicalassert";
 
-// Map to store callbacks by UUID
-const callbackMap = new Map<string, Signal<unknown>>();
+
 
 export async function runFunctions(
   message: Message,
@@ -20,12 +19,9 @@ export async function runFunctions(
   const baseType = parts[0];
   const callbackId = parts.length > 1 ? parts[1] : undefined;
 
-  // Check if this is a callback response
-  if (callbackId && callbackMap.has(callbackId)) {
-    // This is a callback response, trigger the stored callback
-    const callback = callbackMap.get(callbackId);
-    callback?.trigger(message.payload);
-    callbackMap.delete(callbackId); // Clean up after use
+  // If there's a callback ID AND no function for the base type, it's a response.
+  if (callbackId && !functions[baseType]) {
+    Signal.trigger(callbackId, message.payload);
     return;
   }
 
@@ -100,29 +96,18 @@ export async function PostMessage(
   });
 
   if (cb) {
-    // Generate a UUID for this callback
-    const callbackId = crypto.randomUUID();
-
-    // Create a new signal for this callback
-    const messageCallback = new Signal<unknown>();
-
-    // Store the callback in the map with the UUID as key
-    callbackMap.set(callbackId, messageCallback);
+    const messageCallback = new Signal<unknown>("message-callback", 9000);
 
     // Modify the message type to include the UUID
     if ("type" in message) {
       // Make sure we don't add a UUID to a message that already has one
       if (!message.type.includes(":")) {
-        message.type = `${message.type}:${callbackId}`;
+        message.type = `${message.type}:${messageCallback.id}`;
       }
     }
 
     worker.postMessage(message);
-    try {
-      return await messageCallback.wait();
-    } finally {
-      callbackMap.delete(callbackId);
-    }
+    return await messageCallback.wait();
   } else {
     worker.postMessage(message);
   }

@@ -160,4 +160,4 @@ export type WorkerConstructor = new (
 export type custompayload = {
   file: string;
   base?: string | URL;
-} | "PROXY"
+}

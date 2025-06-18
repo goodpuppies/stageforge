@@ -66,4 +66,8 @@ export const functions = {
       LogChannel.log("postmanDEBUG", "Skipping duplicate ADDREMOTE for already known address:", payload.actorId);
     }
   },
+  GETID: () => {
+    //@ts-expect-error PostMan.state is internal
+    return PostMan.state.id;
+  },
 } as const;
