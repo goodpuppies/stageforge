@@ -86,6 +86,7 @@ export type tsfile = string;
 
 // BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
+  // deno-lint-ignore no-explicit-any
   type: any | CallbackType<any>;
   payload: unknown;
 };
@@ -122,6 +123,7 @@ type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
 
 // GenericActorFunctions type
 export type GenericActorFunctions = {
+  // deno-lint-ignore no-explicit-any
   [key: string]: (payload: any, ctx?: any) => AcFnRet;
 };
 
@@ -138,7 +140,7 @@ export interface PairAddress {
 
 // NonArrayAddress type
 export type NonArrayAddress = PairAddress | SystemCommand | WorkerToSystem;
-
+// deno-lint-ignore no-explicit-any
 export type MessageFrom<T extends Record<string, (p: any) => any>> = {
   [K in keyof T]: {
     type: K;
@@ -148,6 +150,7 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
 }[keyof T];
 
 export type ReturnFrom<
+  // deno-lint-ignore no-explicit-any
   T extends Record<string, (p: any) => any>,
   M extends MessageFrom<T>,
 > = ReturnType<T[M["type"]]>;
@@ -160,4 +163,4 @@ export type WorkerConstructor = new (
 export type custompayload = {
   file: string;
   base?: string | URL;
-}
+};

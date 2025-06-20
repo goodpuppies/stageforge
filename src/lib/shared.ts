@@ -1,14 +1,13 @@
 import { PostalService } from "./PostalService.ts";
 import type { ActorId, GenericActorFunctions, Message, TargetMessage } from "./types.ts";
 import { processBigInts, StandardizeAddress } from "./utils.ts";
-import { Signal } from "./Signal.ts";
+import { SignalEvent } from "./Signal.ts";
 import { assert } from "@goodpuppies/logicalassert";
-
-
 
 export async function runFunctions(
   message: Message,
   functions: GenericActorFunctions,
+  // deno-lint-ignore no-explicit-any
   ctx: any,
 ) {
   if (message.payload) {
@@ -21,7 +20,7 @@ export async function runFunctions(
 
   // If there's a callback ID AND no function for the base type, it's a response.
   if (callbackId && !functions[baseType]) {
-    Signal.trigger(callbackId, message.payload);
+    SignalEvent.trigger(callbackId, message.payload);
     return;
   }
 
@@ -56,6 +55,7 @@ export async function runFunctions(
 export async function PostMessage(
   message: TargetMessage | Message,
   cb?: boolean,
+  // deno-lint-ignore no-explicit-any
   ctx?: any,
 ): Promise<unknown | void> {
   if ("target" in message && Array.isArray(message.target)) {
@@ -96,7 +96,7 @@ export async function PostMessage(
   });
 
   if (cb) {
-    const messageCallback = new Signal<unknown>("message-callback", 9000);
+    const messageCallback = new SignalEvent<unknown>("message-callback", 9000);
 
     // Modify the message type to include the UUID
     if ("type" in message) {

@@ -5,7 +5,8 @@
     "jsr:@mommysgoodpuppy/logchannel@0.1": "0.1.0",
     "jsr:@std/assert@^1.0.13": "1.0.13",
     "jsr:@std/internal@^1.0.6": "1.0.8",
-    "jsr:@std/net@*": "1.0.4"
+    "jsr:@std/net@*": "1.0.4",
+    "jsr:@std/path@*": "1.1.0"
   },
   "jsr": {
     "@goodpuppies/logicalassert@0.1.2": {
@@ -31,6 +32,9 @@
     },
     "@std/net@1.0.4": {
       "integrity": "2f403b455ebbccf83d8a027d29c5a9e3a2452fea39bb2da7f2c04af09c8bc852"
+    },
+    "@std/path@1.1.0": {
+      "integrity": "ddc94f8e3c275627281cbc23341df6b8bcc874d70374f75fec2533521e3d6886"
     }
   },
   "redirects": {

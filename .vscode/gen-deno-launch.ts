@@ -1,4 +1,5 @@
 #!/usr/bin/env -S deno run -A --unstable
+// deno-lint-ignore-file
 /**
  * Run your Deno app with --inspect on port 9229,
  * wait until the list of CDP targets is stable,
@@ -14,7 +15,7 @@
 import { resolve } from "jsr:@std/path";
 
 const INSPECT_PORT = 9229;
-const POLL_INTERVAL = 300;   // ms
+const POLL_INTERVAL = 300; // ms
 const STABLE_ROUNDS = 4;
 const MARKER = "deno-worker-gen";
 
@@ -35,18 +36,21 @@ async function fetchTargets() {
 }
 
 let last = new Set<string>(), stable = 0;
-for (; ;) {
+for (;;) {
   try {
     const urls = new Set(
       (await fetchTargets())
-        .map(t => t.webSocketDebuggerUrl)
+        .map((t) => t.webSocketDebuggerUrl)
         .filter(Boolean) as string[],
     );
-    if (urls.size && urls.size === last.size && [...urls].every(x => last.has(x))) ++stable;
-    else { stable = 0; last = urls; }
+    if (urls.size && urls.size === last.size && [...urls].every((x) => last.has(x))) ++stable;
+    else {
+      stable = 0;
+      last = urls;
+    }
     if (stable >= STABLE_ROUNDS) break;
   } catch { /* inspector not ready yet */ }
-  await new Promise(r => setTimeout(r, POLL_INTERVAL));
+  await new Promise((r) => setTimeout(r, POLL_INTERVAL));
 }
 
 // 3 ▸ build new configs
@@ -59,8 +63,8 @@ const attaches = [...last].map((ws, i) => ({
 }));
 const compound = {
   name: "Deno - Attach (ALL)",
-  configurations: attaches.map(c => c.name),
-  preLaunchTask: "genlaunch",      // ← whatever your task label is
+  configurations: attaches.map((c) => c.name),
+  preLaunchTask: "genlaunch", // ← whatever your task label is
   generatedBy: MARKER,
 };
 
@@ -80,8 +84,7 @@ launch.compounds = (launch.compounds ?? []).filter((c: any) => c.generatedBy !==
 launch.configurations.push(...attaches);
 launch.compounds.push(compound);
 
-
 await Deno.writeTextFile(launchPath, JSON.stringify(launch, null, 2));
 console.log(`✨  Updated ${launchPath} with ${attaches.length} workers.`);
-await new Promise(resolve => setTimeout(resolve, 1000));
-console.log("READY-FOR-DEBUG");  
+await new Promise((resolve) => setTimeout(resolve, 1000));
+console.log("READY-FOR-DEBUG");

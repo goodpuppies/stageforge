@@ -1,9 +1,8 @@
-import { wait } from "../../../src/lib/utils.ts";
-import { actorState, PostMan } from "../../../src/mod.ts";
+import { actorState, PostMan, wait } from "../../../src/mod.ts";
 import type { api as subApi } from "./sub.ts";
 
 const state = actorState({
-  name: "main" as string,
+  name: "main",
 });
 
 export const api = {

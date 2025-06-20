@@ -1,31 +1,17 @@
-import { Signal } from "./Signal.ts";
-import {
-  type ActorId,
-  type ActorW,
-  type custompayload,
-  type GenericActorFunctions,
-  type Message,
-  type MessageFrom,
-  type ReturnFrom,
-  type reverseProxy,
-  System,
-  type TopicName,
-  type WorkerConstructor,
-} from "./types.ts";
+import { SignalEvent } from "./Signal.ts";
+import { type ActorId, type ActorW, type custompayload, type GenericActorFunctions, type Message, type MessageFrom, type ReturnFrom, type reverseProxy, System, type TopicName, type WorkerConstructor } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { assert } from "@goodpuppies/logicalassert";
-
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
   public sender?: ActorId;
   public static debugMode = false;
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
-  
+
   private static WorkerClass: WorkerConstructor = Worker;
 
-  // Constructor that accepts a custom Worker implementation
   constructor(customWorkerClass?: WorkerConstructor) {
     if (customWorkerClass) {
       PostalService.WorkerClass = customWorkerClass;
@@ -37,21 +23,19 @@ export class PostalService {
     this.functions = { ...this.functions, ...newFunctions };
   }
 
-  public functions:GenericActorFunctions = {
+  public functions: GenericActorFunctions = {
     CREATE: async (payload: custompayload) => {
-
       const id = await assert(payload).with({
         object: async (payload: { file: string; base?: string | URL }) => {
-          return await this.add(payload)
-        }
-      })
-
+          return await this.add(payload);
+        },
+      });
       LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator");
       return id;
     },
     LOADED: (payload: { actorId: ActorId; callbackKey: string }) => {
       LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
-      Signal.trigger(payload.callbackKey, payload.actorId);
+      SignalEvent.trigger(payload.callbackKey, payload.actorId);
     },
     DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
@@ -61,17 +45,15 @@ export class PostalService {
     },
     TOPICUPDATE: async (payload: { delete: boolean; name: TopicName }, ctx: PostalService) => {
       await this.topicUpdate(payload, ctx);
-    }
+    },
   };
 
   private async add(input: { file: string; base?: string | URL } | reverseProxy): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", input);
     // Resolve relative to Deno.cwd()
-    console.log(input);
 
     const id = await assert(input).with({
       object: async (input: { file: string; base?: string | URL }) => {
-        console.log("jhmm", input);
         const workerUrl = assert(typeof Deno).with({
           object: () => {
             return new URL(input.file, input.base ?? `file://${Deno.cwd()}/`).href;
@@ -84,8 +66,9 @@ export class PostalService {
             return new URL(input.file, baseUrl).href;
           },
         });
-
-        console.log("creating worker", workerUrl);
+        if (PostalService.debugMode) {
+          console.log("creating worker", workerUrl);
+        }
         const worker: Worker = new PostalService.WorkerClass(
           workerUrl,
           { name: input.file, type: "module" },
@@ -94,7 +77,7 @@ export class PostalService {
           this.OnMessage(event.data);
         };
 
-        const actorSignal = new Signal<ActorId>("actor-creation", 1000);
+        const actorSignal = new SignalEvent<ActorId>("actor-creation", 1000);
 
         // Send the INIT message with the callback key in the payload
         worker.postMessage({
@@ -232,9 +215,9 @@ export class PostalService {
 
           // deno-lint-ignore no-explicit-any
           if ((actor as any).worker.modded) {
-            return
+            return;
           }
-          
+
           console.error("postal service does not have: ", message.address.to);
           console.error("debugmode: ", PostalService.debugMode);
           console.error("fullmsg:", message);

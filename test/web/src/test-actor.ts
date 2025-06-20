@@ -1,4 +1,4 @@
-import { PostMan, actorState } from "../../../src/mod.ts";
+import { actorState, PostMan } from "../../../src/mod.ts";
 
 const state = actorState({
   name: "test-actor" as string,
@@ -15,8 +15,8 @@ export const api = {
   },
   ADD: (payload: { a: number; b: number }) => {
     console.log("Test actor received ADD with payload:", payload);
-    if (typeof payload.a !== 'number' || typeof payload.b !== 'number') {
-      throw new Error('Invalid payload for ADD: a and b must be numbers.');
+    if (typeof payload.a !== "number" || typeof payload.b !== "number") {
+      throw new Error("Invalid payload for ADD: a and b must be numbers.");
     }
     return payload.a + payload.b;
   },

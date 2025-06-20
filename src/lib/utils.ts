@@ -1,10 +1,4 @@
-import {
-  type AddressedMessage,
-  type Message,
-  type MessageType,
-  System,
-  type TargetMessage,
-} from "./types.ts";
+import { type AddressedMessage, type Message, type MessageType, System, type TargetMessage } from "./types.ts";
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(() => resolve(), ms));
@@ -12,6 +6,7 @@ export function wait(ms: number): Promise<void> {
 
 export function StandardizeAddress(
   message: TargetMessage | Message,
+  // deno-lint-ignore no-explicit-any
   ctx: any,
 ): AddressedMessage<MessageType> {
   let from;
@@ -25,6 +20,7 @@ export function StandardizeAddress(
       address: { fm: from, to: message.target },
       ...message,
     };
+    // deno-lint-ignore no-explicit-any
     delete (addressedMessage as any).target;
   } else {
     addressedMessage = message;
@@ -37,7 +33,9 @@ export function processBigInts<T>(data: T): T {
     return data;
   }
   if (typeof data === "object") {
+    // deno-lint-ignore no-explicit-any
     if (data !== null && typeof (data as any).__bigint__ === "string") {
+      // deno-lint-ignore no-explicit-any
       return BigInt((data as any).__bigint__) as unknown as T;
     }
 

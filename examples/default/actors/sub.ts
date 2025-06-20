@@ -1,5 +1,4 @@
-import { actorState, PostMan } from "../../../src/mod.ts";
-import { wait } from "../../../src/lib/utils.ts";
+import { actorState, PostMan, wait } from "../../../src/mod.ts";
 
 const state = actorState({
   name: "sub",
@@ -13,7 +12,7 @@ export const api = {
   LOG: (_payload: null) => {
     console.log("hello from", state.id);
   },
-  GETSTRING: (_payload: null, ctx: any) => {
+  GETSTRING: (_payload: null, ctx: typeof PostMan) => {
     console.log(ctx.sender);
     return "some text";
   },

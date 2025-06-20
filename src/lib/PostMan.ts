@@ -1,14 +1,4 @@
-import {
-  type ActorId,
-  type BaseState,
-  createTopicName,
-  type GenericActorFunctions,
-  type Message,
-  type MessageFrom,
-  type ReturnFrom,
-  System,
-  type tsfile,
-} from "./types.ts";
+import { type ActorId, type BaseState, createTopicName, type GenericActorFunctions, type Message, type MessageFrom, type ReturnFrom, System, type tsfile } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { assert } from "@goodpuppies/logicalassert";
@@ -18,10 +8,11 @@ export class PostMan {
   private static functions = functions as GenericActorFunctions;
   static worker: Worker = self as unknown as Worker;
   private static state: BaseState;
-  private static sender?: ActorId;
+  public static sender?: ActorId;
 
   constructor(
-    actorState: Record<string, unknown> & BaseState,
+    // deno-lint-ignore no-explicit-any
+    actorState: Record<string, any> & BaseState,
     functions: GenericActorFunctions,
   ) {
     PostMan.state = actorState;
@@ -39,7 +30,6 @@ export class PostMan {
     file: tsfile | URL,
     base?: tsfile | URL,
   ): Promise<ActorId> {
-    console.log("create", file);
     interface payload {
       file: tsfile | URL;
       base?: tsfile | URL;
@@ -92,14 +82,17 @@ export class PostMan {
   }
 
   static PostMessage<
-    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   static PostMessage<
-    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   // Implementation
   static PostMessage<
-    T extends Record<string, (payload: unknown, ctx?: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb?: boolean): unknown {
     return PostMessage(message, cb, this);
   }

@@ -7,7 +7,9 @@ Mainly used in https://github.com/goodpuppies/petplay
 ```ts
 import { PostalService, PostMan } from "jsr:@goodpuppies/stageforge";
 ```
+
 or on the web
+
 ```ts
 import { PostalService, PostMan } from "https://esm.sh/jsr/@goodpuppies/stageforge@0.1.0";
 ```
@@ -15,6 +17,7 @@ import { PostalService, PostMan } from "https://esm.sh/jsr/@goodpuppies/stagefor
 ## Basic Usage
 
 ### main.ts - Create the coordinator
+
 ```ts
 import { PostalService } from "jsr:@goodpuppies/stageforge";
 
@@ -35,8 +38,9 @@ console.log(response); // "hi"
 ```
 
 ### actor.ts - Define an actor
+
 ```ts
-import { PostMan, actorState } from "jsr:@goodpuppies/stageforge";
+import { actorState, PostMan } from "jsr:@goodpuppies/stageforge";
 
 // Create a type-safe state with proper initialization
 const state = actorState({
@@ -51,14 +55,14 @@ export const api = {
     console.log("Actor initialized with ID:", state.id);
     main(payload);
   },
-  
+
   HELLO: (_payload: null) => {
     return "hi";
   },
-  
+
   LOG: (_payload: null) => {
     console.log("Actor:", state.id);
-  }
+  },
 } as const;
 
 // Initialize the actor with state and API
@@ -68,21 +72,22 @@ new PostMan(state, api);
 async function main(_payload: string) {
   // Create a child actor
   const subActorId = await PostMan.create("./sub.ts");
-  
+
   // Send a message with type checking
   const response = await PostMan.PostMessage<typeof subApi>({
     target: subActorId,
-    type: "GETSTRING", 
+    type: "GETSTRING",
     payload: null,
   }, true);
-  
+
   console.log(response);
 }
 ```
 
 ### sub.ts - Define a child actor
+
 ```ts
-import { PostMan, actorState } from "jsr:@goodpuppies/stageforge";
+import { actorState, PostMan } from "jsr:@goodpuppies/stageforge";
 
 const state = actorState({
   name: "sub",
@@ -93,14 +98,14 @@ export const api = {
   __INIT__: (_payload: null) => {
     console.log("Sub actor initialized");
   },
-  
+
   GETSTRING: (_payload: null) => {
     return "Hello from sub actor";
   },
-  
+
   LOG: (_payload: null) => {
     console.log("Hello from", state.id);
-  }
+  },
 } as const;
 
 // Initialize the actor with state and API
@@ -124,7 +129,7 @@ PostMan.setTopic("shared-channel");
 
 // To find actors in the addressBook you can do something like
 const actors = Array.from(state.addressBook)
-  .filter((addr) => addr.startsWith('sub@'));
+  .filter((addr) => addr.startsWith("sub@"));
 
 // To unsubscribe from a topic:
 PostMan.delTopic("shared-channel");
@@ -137,9 +142,9 @@ Better typing support is in the works. 0.1 adds typing to PostMessage.
 ```ts
 // In sub.ts
 export const api = {
-  ADD: (payload: { a: number, b: number }) => {
+  ADD: (payload: { a: number; b: number }) => {
     return payload.a + payload.b;
-  }
+  },
 } as const;
 
 // In main.ts
@@ -148,8 +153,8 @@ import type { api as subApi } from "./sub.ts";
 // Type-checked message - compiler will validate type and payload
 const result = await PostMan.PostMessage<typeof subApi>({
   target: subActorId,
-  type: "ADD",  // Autocomplete works here
-  payload: { a: 5, b: 3 }  // Type checked!
+  type: "ADD", // Autocomplete works here
+  payload: { a: 5, b: 3 }, // Type checked!
 }, true);
 ```
 
