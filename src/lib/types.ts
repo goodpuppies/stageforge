@@ -8,8 +8,13 @@ export type TopicName = string & { readonly __topicName: unique symbol };
 
 export function createActorId(value: string): ActorId {
   // Validate format: name@uuid
-  if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    throw new Error(`Invalid ActorId format: ${value}. Must be in the format name@uuid`);
+  if (
+    !/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      .test(value)
+  ) {
+    throw new Error(
+      `Invalid ActorId format: ${value}. Must be in the format name@uuid`,
+    );
   }
   return value as ActorId;
 }
@@ -37,9 +42,9 @@ export function actorState<T extends object>(state: T): T & BaseState {
   } as T & BaseState;
 }
 
-export const System = "SYSTEM" as ActorId;
+type SystemType = string & { readonly __systemString: unique symbol };
 
-export type SystemType = typeof System;
+export const System = "SYSTEM" as SystemType;
 
 // Message Address Interfaces
 
@@ -64,36 +69,36 @@ export interface MessageAddressArray {
   to: string | string[];
 }
 
-
 // Union of all possible message addresses
 export type MessageAddress = MessageAddressSingle | MessageAddressArray;
 
 // MessageType type
-export type MessageType = GenericMessage
+export type MessageType = GenericMessage;
 
 // CallbackType type
 type CallbackType<T extends string> = `CB:${T}`;
 
 // tsfile type
-export type tsfile = string
+export type tsfile = string;
 
 // BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
+  // deno-lint-ignore no-explicit-any
   type: any | CallbackType<any>;
-  payload: unknown;
+  payload?: unknown;
 };
 
 // AddressedMessage interface
 export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
   address: {
-    fm: ActorId;
-    to: ActorId | ActorId[]
+    fm: ActorId | SystemType;
+    to: ActorId | ActorId[] | SystemType;
   };
 };
 
 // TargetedMessage interface
 export type TargetedMessage<K extends MessageType> = BaseMessage<K> & {
-  target: ActorId | ActorId[];
+  target: SystemType | ActorId | ActorId[];
 };
 
 // Message type
@@ -103,19 +108,20 @@ export type TargetMessage = TargetedMessage<MessageType>;
 // GenericMessage interface
 export type GenericMessage = {
   address: {
-    fm: ActorId;
-    to: ActorId | ActorId[];
+    fm: ActorId | SystemType;
+    to: ActorId | ActorId[] | SystemType;
   };
   type: string;
-  payload: unknown;
+  payload?: unknown;
 };
 
 // AcFnRet type
-type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
+type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
 
 // GenericActorFunctions type
 export type GenericActorFunctions = {
-  readonly [key: string]: (payload: any, ctx?: any) => AcFnRet;
+  // deno-lint-ignore no-explicit-any
+  [key: string]: (payload: any, ctx?: any) => AcFnRet;
 };
 
 // Actor interface to represent an actor in the system
@@ -131,16 +137,28 @@ export interface PairAddress {
 
 // NonArrayAddress type
 export type NonArrayAddress = PairAddress | SystemCommand | WorkerToSystem;
-
+// deno-lint-ignore no-explicit-any
 export type MessageFrom<T extends Record<string, (p: any) => any>> = {
   [K in keyof T]: {
     type: K;
-    payload: Parameters<T[K]>[0];
-    target: string | string[];
-  }
+    payload?: Parameters<T[K]>[0];
+    target: ActorId | ActorId[] | SystemType;
+  };
 }[keyof T];
 
 export type ReturnFrom<
+  // deno-lint-ignore no-explicit-any
   T extends Record<string, (p: any) => any>,
-  M extends MessageFrom<T>
+  M extends MessageFrom<T>,
 > = ReturnType<T[M["type"]]>;
+
+export type WorkerConstructor = new (
+  scriptURL: string | URL,
+  options?: WorkerOptions,
+) => Worker;
+
+export type workerpayload = {
+  file: string | URL;
+  parent: ActorId | undefined;
+  base?: string | URL;
+};

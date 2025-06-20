@@ -1,24 +1,27 @@
 import {
-  type GenericActorFunctions,
-  type tsfile,
+  type ActorId,
   type BaseState,
+  createTopicName,
+  type GenericActorFunctions,
+  type Message,
   type MessageFrom,
   type ReturnFrom,
   System,
-  type ActorId,
-  createTopicName
+  type tsfile,
+  type workerpayload,
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 
 export class PostMan {
   private static addressBook: Set<ActorId>;
-  private static functions = functions as GenericActorFunctions
+  private static functions = functions as GenericActorFunctions;
   static worker: Worker = self as unknown as Worker;
   private static state: BaseState;
-  private static sender?: ActorId
+  public static sender?: ActorId | typeof System;
 
   constructor(
+    // deno-lint-ignore no-explicit-any
     actorState: Record<string, any> & BaseState,
     functions: GenericActorFunctions,
   ) {
@@ -28,33 +31,29 @@ export class PostMan {
     PostMan.functions = { ...PostMan.functions, ...functions };
     PostMan.worker.onmessage = (event: MessageEvent) => {
       // awkward asf
-      PostMan.sender = (event.data as Message).address.fm
-      runFunctions(event.data, PostMan.functions, PostMan)
+      PostMan.sender = (event.data as Message).address.fm;
+      runFunctions(event.data, PostMan.functions, PostMan);
     };
   }
 
-
-  static async create(actorname: tsfile | URL, base?: tsfile | URL, parentOverride?: ActorId): Promise<ActorId> {
-    //console.log("create", actorname)
-    interface payload {
-      actorname: tsfile | URL;
-      base?: tsfile | URL;
-      parentOverride?: ActorId;
-    }
-    let payload: payload
+  static async create(
+    file: tsfile | URL,
+    base?: tsfile | URL,
+    parentOverride?: ActorId,
+  ): Promise<ActorId> {
+    let payload: workerpayload;
     if (base) {
-      payload = { actorname, base, parentOverride }
-    }
-    else {
-      payload = {actorname, parentOverride}
+      payload = { file: file, base: base, parent: parentOverride };
+    } else {
+      payload = { file: file, parent: parentOverride };
     }
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
-      payload: payload
-    }, true) as ActorId
+      payload: payload,
+    }, true) as ActorId;
 
-    PostMan.addressBook.add(result)
+    PostMan.addressBook.add(result);
     return result;
   }
 
@@ -64,10 +63,10 @@ export class PostMan {
       type: "TOPICUPDATE",
       payload: {
         delete: false,
-        name: topic
-      }
-    })
-    PostMan.state.topics.add(createTopicName(topic))
+        name: topic,
+      },
+    });
+    PostMan.state.topics.add(createTopicName(topic));
   }
   static delTopic(topic: string) {
     PostMan.PostMessage({
@@ -75,22 +74,25 @@ export class PostMan {
       type: "TOPICUPDATE",
       payload: {
         delete: true,
-        name: topic
-      }
-    })
-    PostMan.state.topics.delete(createTopicName(topic))
+        name: topic,
+      },
+    });
+    PostMan.state.topics.delete(createTopicName(topic));
   }
 
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   // Implementation
   static PostMessage<
-    T extends Record<string, (payload: any, ctx?: any) => any>
-  >(message: MessageFrom<T>, cb?: boolean): any {
-    return PostMessage(message as any, cb, this);
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
+  >(message: MessageFrom<T>, cb?: boolean): unknown {
+    return PostMessage(message, cb, this);
   }
 }

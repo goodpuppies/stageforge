@@ -1,11 +1,20 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@mommysgoodpuppy/logchannel@0.1": "0.1.0",
+    "jsr:@goodpuppies/logicalassert@0.1.2": "0.1.2",
+    "jsr:@mommysgoodpuppy/logchannel@0.1.0": "0.1.0",
     "jsr:@std/assert@^1.0.13": "1.0.13",
-    "jsr:@std/internal@^1.0.6": "1.0.6"
+    "jsr:@std/internal@^1.0.6": "1.0.8",
+    "jsr:@std/net@*": "1.0.4",
+    "jsr:@std/path@*": "1.1.0"
   },
   "jsr": {
+    "@goodpuppies/logicalassert@0.1.2": {
+      "integrity": "a1d8ab2e8a8fb0a319a1c27ae2157d8b82edd066369362cd6305db7dddf6dd58",
+      "dependencies": [
+        "jsr:@std/assert"
+      ]
+    },
     "@mommysgoodpuppy/logchannel@0.1.0": {
       "integrity": "4001c4ece26bb332d511c6a3e3b0383d4f39d476d375b0dda32a6e42a9259c67"
     },
@@ -17,12 +26,68 @@
     },
     "@std/internal@1.0.6": {
       "integrity": "9533b128f230f73bd209408bb07a4b12f8d4255ab2a4d22a1fd6d87304aca9a4"
+    },
+    "@std/internal@1.0.8": {
+      "integrity": "fc66e846d8d38a47cffd274d80d2ca3f0de71040f855783724bb6b87f60891f5"
+    },
+    "@std/net@1.0.4": {
+      "integrity": "2f403b455ebbccf83d8a027d29c5a9e3a2452fea39bb2da7f2c04af09c8bc852"
+    },
+    "@std/path@1.1.0": {
+      "integrity": "ddc94f8e3c275627281cbc23341df6b8bcc874d70374f75fec2533521e3d6886"
     }
+  },
+  "redirects": {
+    "https://esm.sh/jsr/@goodpuppies/logicalassert/m": "https://esm.sh/jsr/@goodpuppies/logicalassert@0.1.2/m"
+  },
+  "remote": {
+    "https://esm.sh/@jsr/goodpuppies__logicalassert@0.1.2/es2022/goodpuppies__logicalassert.mjs": "290c6dc53ec45076a77a8d0b025424845cc2c5ca365a41f2ee5f714567cc2746",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/almost-equals.mjs": "8c8f5e941a378182957c57a04c199280eda84506306221a44c2548f42cc01f0c",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/array-includes.mjs": "be48260020e557ace298554be99df2ba0b9eff08a8d5e265f0b073c51d7ee444",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/assert.mjs": "ddf4d3036b766d1d0e656c8297c6881d7cc2ffe0894a1635a8f39927eaf94f72",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/assertion-error.mjs": "793f212ea70d2fde3be359234e6b03868df16d9f9bebc947e1fa3c887169e69c",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/equal.mjs": "112806e8df8ba791105282021dbe9bb7d42200a02882d9b9893588d377cb91ac",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/equals.mjs": "e0697d8083ec5da854977cec341eb292380cb64e2ace6bdc1a37e681bd63d8de",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/exists.mjs": "2019d3f55ee6662f0b8267a3c24f88630c56d791053f8eff5c71dc6a65bc5091",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/fail.mjs": "11196bd8746dbd2edf9d8ce36e8e795c2586798fe3df2ca271cd889bd872cb4f",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/false.mjs": "48e25ed0d52dda9fe167fe01df6b441a58e2de827b9371568f649f6c4354e885",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/greater-or-equal.mjs": "abce23f09716051d74402d9bd54a4cf6b80cc45d3bce6c1fd4f8bf5ec5d06a9f",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/greater.mjs": "0fda588b0033f3ebd8249aa2de2f00a9109969565aa68a3e296309250af8d56a",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/instance-of.mjs": "9fa1e87bcf160c4abf38a1c726474619ec93303d30596e1979feea66746e575a",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/is-error.mjs": "105954a8620bdae49a84e924bc504b8fc106a4f1160b64441b4b2d5255d08cd7",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/less-or-equal.mjs": "7b08abf7a956b5edd859ec5f6d1defb575982b4e84855e8957d83c736e018363",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/less.mjs": "4ba9cad6cd625eff08a6caebff95e141a86a08884f8eebd86a819761f178ced5",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/match.mjs": "7b960f091c8f5cd62882f5a28910f3de8c6e93ba32ac2fde1d54c61578982fe6",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/not-equals.mjs": "aa55a02b0a85c1a5a7107b2cd3866c4825a111a4c1bc030fd367292c654e155a",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/not-instance-of.mjs": "61cd199784723934406f185ba881f652bb0f40308f45ca49e61ad58da223824f",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/not-match.mjs": "2f651be9e2de00a4f9917551df2d7e6d5ee4c63774499384326e478185726057",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/not-strict-equals.mjs": "21046b83d994b9176de846f3fd91d34fe32444ee315d464a7bf0b08dbadc3b86",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/object-match.mjs": "32a89fe1fbab7e11d08779bdaed9cdb5bd866757fb2339dd0a5998501c643dd4",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/rejects.mjs": "034e79615be4e63dc1a307e30238c301bafc536d6c1a39a3ea8c68c5cf267d87",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/std__assert.mjs": "00b7f8e9cfd8bf4a6eb8ba669ea9665afc62d9ddd1136ae36446a9868dc3f047",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/strict-equals.mjs": "e426ed8297cfb860ade34c6e71ef2174f3da1fb822276f0d3e3735cf2a0245e3",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/string-includes.mjs": "56ddf89b2839527c725e5d8f7edc0f374cf5c46faa5455f6e78cf6b11e9e1cc6",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/throws.mjs": "b07fb8f39d818ecbd77fcc7b20896a0f40f83a6aef1b954f65b614b9cecc3a94",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/unimplemented.mjs": "344fd95ce1c63c92e19bbca38f4221ec04e6a7db911a31a524abf258965414be",
+    "https://esm.sh/@jsr/std__assert@1.0.13/es2022/unreachable.mjs": "f739e888cee5e038632694d638610e14a622ca8646b5284afd5b8713ddd79800",
+    "https://esm.sh/@jsr/std__assert@^1.0.13?target=es2022": "23d89f7790def79e3784e6b0c1304d0554ece696f7576a55e146357c8cad7e97",
+    "https://esm.sh/@jsr/std__internal@1.0.8/es2022/build-message.mjs": "545d39744f3264ec63a8be92f1cd2d672938ecf814ed2b894a0eab1db8151fe0",
+    "https://esm.sh/@jsr/std__internal@1.0.8/es2022/diff-str.mjs": "04edcfb68a170b491a0e6eec2ce710c35e79a6bdfe4f0788698cdaf8f9bf4058",
+    "https://esm.sh/@jsr/std__internal@1.0.8/es2022/diff.mjs": "8b517a61ddec19320098494eed4c86c62df22733401cd711658b45692707c4ea",
+    "https://esm.sh/@jsr/std__internal@1.0.8/es2022/format.mjs": "f51f674116bdc3f142c39e1c448495f16d2c58badf6c61b63e89977467e2dcf2",
+    "https://esm.sh/@jsr/std__internal@1.0.8/es2022/styles.mjs": "a0f6cf10077050cdad7fe696eae704cdee467946647b5b5e23fa3d9093bf48e0",
+    "https://esm.sh/@jsr/std__internal@^1.0.6/build-message?target=es2022": "256837f1c4783868119ec8aca91a36353218bbae66e2a519fb0df889ace25dea",
+    "https://esm.sh/@jsr/std__internal@^1.0.6/diff-str?target=es2022": "e9dcd796cd708a542a871946b3823facbec943ab98606a848e790b5c8d31ecdf",
+    "https://esm.sh/@jsr/std__internal@^1.0.6/diff?target=es2022": "63e0c1215ec269f2ff65bff2e310b203812c6666a11630c69097542c9b867312",
+    "https://esm.sh/@jsr/std__internal@^1.0.6/format?target=es2022": "d81c880144a5bfb38cd47f4d1c4b99d025b3423ec6a480a6182249ef08750f85",
+    "https://esm.sh/@jsr/std__internal@^1.0.6/styles?target=es2022": "730b52e1623686116b96f9e1ec3fdda03d0f9b913ad4dcea510f97c0290493b9",
+    "https://esm.sh/jsr/@goodpuppies/logicalassert/mod.js": "313a275dafc56a992494c08f9777b91cbb04c1f929df1bb5b28eab46452ba9b3"
   },
   "workspace": {
     "dependencies": [
-      "jsr:@mommysgoodpuppy/logchannel@0.1",
-      "jsr:@std/assert@^1.0.13"
+      "jsr:@goodpuppies/logicalassert@0.1.2",
+      "jsr:@mommysgoodpuppy/logchannel@0.1.0",
+      "jsr:@std/assert@1.0.13"
     ]
   }
 }

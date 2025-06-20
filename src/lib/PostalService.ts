@@ -1,38 +1,28 @@
-import { Signal } from "./Signal.ts";
+import { SignalEvent } from "./Signal.ts";
 import {
+  type ActorId,
+  type ActorW,
+  type GenericActorFunctions,
   type Message,
   type MessageFrom,
   type ReturnFrom,
-  type GenericActorFunctions,
   System,
   type TopicName,
-  type ActorId,
-  type ActorW,
+  type WorkerConstructor,
+  type workerpayload,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
-
-
-// Worker constructor type that matches the standard Worker constructor
-export type WorkerConstructor = new (
-  scriptURL: string | URL,
-  options?: WorkerOptions
-) => Worker;
-interface custompayload {
-  actorname: string;
-  base?: string | URL;
-  parentOverride?: ActorId;
-}
+import { assert } from "@goodpuppies/logicalassert";
 
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
-  public sender?: ActorId
+  public sender?: ActorId | typeof System = System;
   public static debugMode = false;
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
-  private callbackMap: Map<symbol, Signal<any>> = new Map();
+
   private static WorkerClass: WorkerConstructor = Worker;
 
-  // Constructor that accepts a custom Worker implementation
   constructor(customWorkerClass?: WorkerConstructor) {
     if (customWorkerClass) {
       PostalService.WorkerClass = customWorkerClass;
@@ -40,30 +30,31 @@ export class PostalService {
     }
   }
 
-  //#region postalservice core
+  public register(newFunctions: GenericActorFunctions) {
+    this.functions = { ...this.functions, ...newFunctions };
+  }
 
   public functions: GenericActorFunctions = {
-
-    CREATE: async (payload: custompayload, ctx: any) => {
-      const parentId = payload.parentOverride ?? ctx.sender as ActorId | null;
-      console.log("create called by:", parentId, "override:", payload.parentOverride);
-
-      const id = await this.add(payload.actorname, payload.base, parentId);
-      LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
-      return id
-    },
-    LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
-      LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
-
-      for (const [key, signal] of this.callbackMap.entries()) {
-        if (key.toString() === payload.callbackKey) {
-
-          signal.trigger(payload.actorId);
-          return;
-        }
+    //deno-lint-ignore no-explicit-any
+    CREATE: async (payload: workerpayload, ctx: any) => {
+      //should be an assertion
+      let parentId;
+      if (payload.parent) {
+        parentId = payload.parent;
+      } else if (ctx?.sender) {
+        parentId = ctx.sender;
+      } else {
+        parentId = System;
       }
+      LogChannel.log("postalserviceCreate", "create called by:", parentId, "override:", payload.parent);
 
-      throw new Error("LOADED message received but no matching callback found");
+      const id = await this.add({ file: payload.file, parent: parentId, base: payload.base });
+      LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator");
+      return id;
+    },
+    LOADED: (payload: { actorId: ActorId; callbackKey: string }) => {
+      LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
+      SignalEvent.trigger(payload.callbackKey, payload.actorId);
     },
     DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
@@ -71,87 +62,70 @@ export class PostalService {
     MURDER: (payload: ActorId) => {
       PostalService.murder(payload);
     },
-    TOPICUPDATE: (payload: { delete: boolean, name: TopicName }, ctx) => {
-      const Dmode = payload.delete
-      const topic = payload.name
-      //#region get actor please refactor
-
-      const actorId = ctx.sender
-      if (!actorId) throw new Error("Cannot set topic: sender ID unknown");
-      const actor = PostalService.actors.get(actorId);
-      //#endregion
-
-      if (actor) {
-        if (Dmode) {
-          PostalService.topicRegistry.get(topic)?.delete(actorId);
-        } else {
-          if (!PostalService.topicRegistry.has(topic)) {
-            PostalService.topicRegistry.set(topic, new Set());
-          }
-          PostalService.topicRegistry.get(topic)?.add(actorId);
-          if (PostalService.debugMode) {
-            console.log(`Registered actor ${actorId} to topic ${topic}`);
-          }
-        }
-      }
-      const tobj = PostalService.topicRegistry.get(topic)
-      if (!tobj) throw new Error("wat")
-      this.doTopicUpdate(tobj, actorId, Dmode)
-    }
+    TOPICUPDATE: async (payload: { delete: boolean; name: TopicName }, ctx: PostalService) => {
+      await this.topicUpdate(payload, ctx);
+    },
   };
 
-  async add(address: string, base?: string | URL, parentId: ActorId | null = null): Promise<ActorId> {
-    LogChannel.log("postalserviceCreate", "creating", address);
+  private async add(input: { file: string | URL; parent: ActorId | undefined; base?: string | URL }): Promise<ActorId> {
+    LogChannel.log("postalserviceCreate", "creating", input);
     // Resolve relative to Deno.cwd()
 
-    let workerUrl: string;
-    if (typeof Deno !== 'undefined') {
-      workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
-    } else {
-      const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
-      workerUrl = new URL(address, baseUrl).href;
-    }
+    const id = await assert(input).with({
+      object: async (input: { file: string; parent: ActorId | undefined; base?: string | URL }) => {
+        const workerUrl = assert(typeof Deno).with({
+          object: () => {
+            return new URL(input.file, input.base ?? `file://${Deno.cwd()}/`).href;
+          },
+          undefined: () => {
+            const baseUrl = globalThis.location.href.substring(
+              0,
+              globalThis.location.href.lastIndexOf("/") + 1,
+            );
+            return new URL(input.file, baseUrl).href;
+          },
+        });
+        if (PostalService.debugMode) {
+          console.log("creating worker", workerUrl);
+        }
+        const worker: Worker = new PostalService.WorkerClass(
+          workerUrl,
+          { name: input.file, type: "module" },
+        );
+        worker.onmessage = (event: MessageEvent<Message>) => {
+          this.OnMessage(event.data);
+        };
 
-    const worker: Worker = new PostalService.WorkerClass(
-      workerUrl,
-      { name: address, type: "module" }
-    );
-    worker.onmessage = (event: MessageEvent<Message>) => { this.OnMessage(event.data); };
+        const actorSignal = new SignalEvent<ActorId>("actor-creation", 1000);
 
+        // Send the INIT message with the callback key in the payload
+        worker.postMessage({
+          address: { fm: System, to: "WORKER" },
+          type: "INIT",
+          payload: {
+            callbackKey: actorSignal.id,
+            originalPayload: null,
+            parentId: input.parent,
+          },
+        });
 
-    const callbackKey = Symbol('actor-creation');
-    const actorSignal = new Signal<ActorId>();
-    this.callbackMap.set(callbackKey, actorSignal);
-
-    // Send the INIT message with the callback key in the payload
-    worker.postMessage({
-      address: { fm: System, to: "WORKER" },
-      type: "INIT",
-      payload: {
-        callbackKey: callbackKey.toString(),
-        originalPayload: null,
-        parentId: parentId,
+        // Create an Actor object
+        const id = await actorSignal.wait(); //id
+        const actor: ActorW = {
+          worker,
+        };
+        PostalService.actors.set(id, actor);
+        return id;
       },
     });
 
-
-    const id = await actorSignal.wait();
-
-
-    this.callbackMap.delete(callbackKey);
-
     LogChannel.log("postalserviceCreate", "created", id);
 
-    // Create an Actor object
-    const actor: ActorW = {
-      worker
-    };
-
-    PostalService.actors.set(id, actor);
     return id;
   }
 
   static murder(address: ActorId) {
+    //needs more work lol
     const actor = PostalService.actors.get(address);
     if (actor) {
       actor.worker.terminate();
@@ -159,68 +133,137 @@ export class PostalService {
     }
   }
 
-  OnMessage = (message: Message): void => {
-    LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
-    const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
-    this.sender = message.address.fm
-    
-    addresses.forEach((address) => {
-      message.address.to = address;
-      if (message.address.to === System) {
-        runFunctions(message, this.functions, this)
-      }
-      else {
-        if (!PostalService.actors.has(message.address.to)) {
-          console.error("postal service does not have: ", message.address.to)
-          console.error("fullmsg:", message)
-          throw new Error("postal service does not have: " + message.address.to)
-        }
-        (PostalService.actors.get(message.address.to)!.worker).postMessage(message);
-      }
+  //#region topic system
+  async topicUpdate(payload: { delete: boolean; name: TopicName }, ctx: PostalService) {
+    const actorId = assert(ctx.sender).with({
+      string: (actorId: ActorId) => {
+        return actorId;
+      },
     });
-  };
+
+    let actor = PostalService.actors.get(actorId);
+    const timeout = 1000; // 1 second timeout
+    const pollInterval = 50; // 50 ms
+    let elapsedTime = 0;
+
+    while (!actor && elapsedTime < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      actor = PostalService.actors.get(actorId);
+      elapsedTime += pollInterval;
+    }
+
+    if (!actor) {
+      throw new Error(`topicUpdate timed out waiting for actor ${actorId} to be registered.`);
+    }
+
+    assert(actor).with({
+      actorWorker: {
+        condition: { worker: "object" },
+        exec: () => {
+          assert(payload.delete).with({
+            true: () => {
+              PostalService.topicRegistry.get(payload.name)?.delete(actorId);
+            },
+            false: () => {
+              if (!PostalService.topicRegistry.has(payload.name)) {
+                PostalService.topicRegistry.set(payload.name, new Set());
+              }
+              PostalService.topicRegistry.get(payload.name)?.add(actorId);
+              if (PostalService.debugMode) {
+                console.log(`Registered actor ${actorId} to topic ${payload.name}`);
+              }
+            },
+          });
+        },
+      },
+    });
+
+    const tobj = assert(PostalService.topicRegistry.get(payload.name)).with({
+      object: (tobj: Set<ActorId>) => {
+        return tobj;
+      },
+    });
+
+    this.doTopicUpdate(tobj, actorId, payload.delete);
+  }
 
   doTopicUpdate(topic: Set<ActorId>, updater: ActorId, delmode: boolean) {
     for (const actor of topic) {
-      if (actor === updater) { continue; }
+      if (actor === updater) continue;
       if (delmode) {
         this.PostMessage({
           target: actor,
           type: "REMOVECONTACT",
-          payload: updater
-        })
+          payload: updater,
+        });
         this.PostMessage({
           target: updater,
           type: "REMOVECONTACT",
-          payload: actor
-        })
+          payload: actor,
+        });
       } else {
         this.PostMessage({
           target: actor,
           type: "ADDCONTACT",
-          payload: updater
-        })
+          payload: updater,
+        });
         this.PostMessage({
           target: updater,
           type: "ADDCONTACT",
-          payload: actor
-        })
+          payload: actor,
+        });
       }
     }
   }
 
+  //#endregion
+
+  //#region postalservice core
+
+  OnMessage = (message: Message): void => {
+    LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
+    const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
+    this.sender = message.address.fm;
+
+    addresses.forEach((address) => {
+      message.address.to = address;
+      if (message.address.to === System) {
+        runFunctions(message, this.functions, this);
+      } else {
+        message.address.to = message.address.to as ActorId;
+
+        if (!PostalService.actors.has(message.address.to)) {
+          if (message.address.fm === System) {
+            throw new Error("System to System message invalid");
+          }
+          const actor = PostalService.actors.get(message.address.fm as ActorId);
+
+          // deno-lint-ignore no-explicit-any
+          if ((actor as any).worker.modded) {
+            return;
+          }
+
+          console.error("postal service does not have: ", message.address.to);
+          console.error("debugmode: ", PostalService.debugMode);
+          console.error("fullmsg:", message);
+          throw new Error("postal service does not have: " + message.address.to);
+        }
+        PostalService.actors.get(message.address.to)!.worker.postMessage(message);
+      }
+    });
+  };
+
   PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
-    PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb?: false | undefined): void;
-    // Implementation
-    PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb?: boolean): any {
-      return PostMessage(message as any, cb, this);
-    }
+    T extends Record<string, (payload: unknown) => unknown>,
+  >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+  PostMessage<
+    T extends Record<string, (payload: unknown) => unknown>,
+  >(message: MessageFrom<T>, cb?: false | undefined): void;
+  PostMessage<
+    T extends Record<string, (payload: unknown) => unknown>,
+  >(message: MessageFrom<T>, cb?: boolean): unknown {
+    return PostMessage(message, cb, this);
+  }
 
   //#endregion
 }
