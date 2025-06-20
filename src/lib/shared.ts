@@ -71,6 +71,10 @@ export async function PostMessage(
     return Promise.all(promises);
   }
 
+  if (!message.payload) {
+    message.payload = null
+  }
+
   message = StandardizeAddress(message, ctx);
 
   if (Array.isArray(message.address.to)) {
@@ -78,8 +82,6 @@ export async function PostMessage(
       "PostMessage in shared.ts should not receive array addresses. Use the PostalService.PostMessage method for that.",
     );
   }
-
-  assert(!ctx);
 
   const worker = assert(!ctx.worker).with({
     true: () => {

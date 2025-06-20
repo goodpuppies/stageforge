@@ -88,7 +88,7 @@ export type tsfile = string;
 export type BaseMessage<K extends MessageType> = {
   // deno-lint-ignore no-explicit-any
   type: any | CallbackType<any>;
-  payload: unknown;
+  payload?: unknown;
 };
 
 // AddressedMessage interface
@@ -115,7 +115,7 @@ export type GenericMessage = {
     to: ActorId | ActorId[];
   };
   type: string;
-  payload: unknown;
+  payload?: unknown;
 };
 
 // AcFnRet type
@@ -144,7 +144,7 @@ export type NonArrayAddress = PairAddress | SystemCommand | WorkerToSystem;
 export type MessageFrom<T extends Record<string, (p: any) => any>> = {
   [K in keyof T]: {
     type: K;
-    payload: Parameters<T[K]>[0];
+    payload?: Parameters<T[K]>[0];
     target: ActorId | ActorId[];
   };
 }[keyof T];
