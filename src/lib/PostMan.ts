@@ -39,7 +39,7 @@ export class PostMan {
   static async create(
     file: tsfile | URL,
     base?: tsfile | URL,
-    parentOverride?: ActorId,
+    parentOverride?: ActorId | typeof System,
   ): Promise<ActorId> {
     let payload: workerpayload;
     if (base) {

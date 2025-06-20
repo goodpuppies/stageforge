@@ -159,6 +159,6 @@ export type WorkerConstructor = new (
 
 export type workerpayload = {
   file: string | URL;
-  parent: ActorId | undefined;
+  parent: ActorId | typeof System | undefined;
   base?: string | URL;
 };

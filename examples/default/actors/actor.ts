@@ -1,4 +1,4 @@
-import { actorState, PostMan, wait } from "../../../src/mod.ts";
+import { actorState, PostMan, System, wait } from "../../../src/mod.ts";
 import type { api as subApi } from "./sub.ts";
 
 const state = actorState({
@@ -21,7 +21,8 @@ export const api = {
 new PostMan(state, api);
 
 async function main(_payload: string) {
-  const sub = await PostMan.create("./actors/sub.ts");
+  console.log("my parent is", state.parent);
+  const sub = await PostMan.create("./actors/sub.ts", undefined, System);
   console.log(sub);
   await PostMan.create("./actors/sub.ts");
 

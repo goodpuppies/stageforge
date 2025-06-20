@@ -94,6 +94,67 @@ export const api = {
 new PostMan(state, api);
 ```
 
+## New Features in 0.2.0
+
+### Stageforge signals
+
+see examples/signals
+
+### Worker plugins for networking
+
+unstable
+
+### PostalService now exposes GenericActorFunctions
+
+```ts
+const mainActorId = await postalService.functions.CREATE({ file: "./actor.ts" });
+
+postalService.functions.MURDER(mainActorId);
+```
+
+### Payloads are now optional
+
+```ts
+PostMan.PostMessage({
+  target: actors,
+  type: "LOG",
+});
+
+//they are nulled when missing
+if (!message.payload) {
+  message.payload = null;
+}
+```
+
+### Parent api
+
+Actor state now includes parent as an explicit property
+
+```ts
+const state = actorState({
+  name: "main",
+});
+
+console.log("my parent is", state.parent);
+
+//parents can be overriden on creation
+const sub = await PostMan.create("./actors/sub.ts", undefined, System);
+```
+
+### PostMan context is exposed
+
+Handlers can now check internal postman properties such as ctx.sender to see the senders address
+
+```ts
+export const api = {
+  GETSTRING: (_payload: null, ctx: typeof PostMan) => {
+    console.log("getstring ctx sender", ctx.sender);
+    console.log("getstring ctx", ctx);
+    return "some text";
+  },
+} as const;
+```
+
 ## New Features in 0.1.0
 
 ### Topics API

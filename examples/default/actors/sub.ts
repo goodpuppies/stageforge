@@ -13,7 +13,8 @@ export const api = {
     console.log("hello from", state.id);
   },
   GETSTRING: (_payload: null, ctx: typeof PostMan) => {
-    console.log(ctx.sender);
+    console.log("getstring ctx sender", ctx.sender);
+    console.log("getstring ctx", ctx);
     return "some text";
   },
   ADD: (payload: { a: number; b: number }) => {
