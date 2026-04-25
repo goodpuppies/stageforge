@@ -35,6 +35,10 @@ interface PerfData {
   relay?: boolean;
 }
 
+function perfRouteString(value: string | string[]): string {
+  return Array.isArray(value) ? value.join(",") : value;
+}
+
 export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
   public static lastSender: ActorId | null = null;
@@ -381,7 +385,7 @@ export class PostalService {
         }
         const perfEntry: PerfData = {
           type: "MessageProcessed",
-          messageType: currentMessage.type.split(":")[0], 
+          messageType: String(currentMessage.type).split(":")[0],
           from: originalSender,
           to: currentMessage.address.to,
           durationMs: parseFloat(processingTimeMs.toFixed(3)),
@@ -420,9 +424,10 @@ export class PostalService {
               const duration = parseFloat((perfLogEndTime - perfLogStartTime).toFixed(3));
               const perfEntry: PerfData = {
                 type: "PostalServiceSyncSend",
-                messageType: message.type.split(":")[0],
-                from: message.address.fm,
-                to: actualTarget,
+                messageType: String(message.type).split(":")[0],
+                from: (message as MessageFrom<T> & { address?: { fm: string } }).address?.fm
+                  ?? perfRouteString(message.target),
+                to: perfRouteString(actualTarget as string | string[]),
                 durationMs: duration,
                 timestamp: Date.now(),
               };
@@ -443,9 +448,9 @@ export class PostalService {
               const duration = parseFloat((perfLogEndTime - perfLogStartTime).toFixed(3));
               const perfEntry: PerfData = {
                 type: "PostalServiceAsyncSend",
-                messageType: message.type.split(":")[0],
-                from: message.target,
-                to: actualTarget,
+                messageType: String(message.type).split(":")[0],
+                from: perfRouteString(message.target),
+                to: perfRouteString(actualTarget as string | string[]),
                 durationMs: duration,
                 timestamp: Date.now(),
               };
