@@ -1,14 +1,11 @@
-import { type ActorId, PostalService } from "../../src/mod.ts";
+import { PostalService } from "../../src/mod.ts";
+import type { api as mainApi } from "./actors/actor.ts";
 
 const postalservice = new PostalService();
 
 PostalService.debugMode = false;
 
-const mainActorId = await postalservice.functions.CREATE({ file: "./actors/actor.ts" }) as ActorId;
-
-const response = await postalservice.PostMessage({
-  target: mainActorId,
-  type: "HELLO",
-}, true);
+const actor = await postalservice.create<typeof mainApi>("./actors/actor.ts");
+const response = await actor.HELLO();
 
 console.log(response); // "hi"

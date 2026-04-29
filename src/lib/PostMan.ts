@@ -1,4 +1,5 @@
 import {
+  type ActorClient,
   type ActorId,
   type BaseState,
   createTopicName,
@@ -11,7 +12,7 @@ import {
   type workerpayload,
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
-import { PostMessage, runFunctions } from "./shared.ts";
+import { createActorClient, PostMessage, runFunctions } from "./shared.ts";
 
 export class PostMan {
   private static addressBook: Set<ActorId>;
@@ -36,11 +37,11 @@ export class PostMan {
     };
   }
 
-  static async create(
+  static async create<T extends GenericActorFunctions = GenericActorFunctions>(
     file: tsfile | URL,
     base?: tsfile | URL,
     parentOverride?: ActorId | typeof System,
-  ): Promise<ActorId> {
+  ): Promise<ActorClient<T>> {
     let payload: workerpayload;
     if (base) {
       payload = { file: file, base: base, parent: parentOverride };
@@ -54,7 +55,7 @@ export class PostMan {
     }, true) as ActorId;
 
     PostMan.addressBook.add(result);
-    return result;
+    return createActorClient<T>(result, this);
   }
 
   static setTopic(topic: string) {

@@ -22,8 +22,8 @@ new PostMan(state, api);
 
 async function main(_payload: string) {
   console.log("my parent is", state.parent);
-  const sub = await PostMan.create("./actors/sub.ts", undefined, System);
-  console.log(sub);
+  const sub = await PostMan.create<typeof subApi>("./actors/sub.ts", undefined, System);
+  console.log(sub.id);
   await PostMan.create("./actors/sub.ts");
 
   const actors = Array.from(state.addressBook)
@@ -33,20 +33,13 @@ async function main(_payload: string) {
     target: actors,
     type: "LOG",
   });
-  const result = await PostMan.PostMessage<typeof subApi>({
-    target: sub,
-    type: "ADD", // Autocomplete works here
-    payload: { a: 5, b: 3 }, // Type checked!
-  }, true);
+
+  const result = await sub.ADD({ a: 5, b: 3 });
 
   console.log(result);
 
   while (true) {
-    const string = await PostMan.PostMessage<typeof subApi>({
-      target: sub,
-      type: "GETSTRING",
-      payload: null,
-    }, true);
+    const string = await sub.GETSTRING();
     console.log(string);
     console.log("in ", state.id, " ", state.addressBook);
     await wait(5000);

@@ -1,5 +1,5 @@
 import "./style.css";
-import { type ActorId, PostalService } from "@goodpuppies/stageforge";
+import { PostalService } from "@goodpuppies/stageforge";
 import type { api as MainCoordinatorApi } from "./main-test-coordinator.ts";
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
@@ -20,19 +20,12 @@ async function runTestSuite() {
     const coordinatorActorPath = new URL("./main-test-coordinator.ts", import.meta.url).href;
     testReportDiv.innerHTML += `<p>Adding Main Test Coordinator from: ${coordinatorActorPath}</p>`;
 
-    const coordinatorAddress = await postalService.functions.CREATE({ file: coordinatorActorPath }) as ActorId;
-    testReportDiv.innerHTML += `<p>Main Test Coordinator added with address: ${coordinatorAddress}</p>`;
+    const coordinator = await postalService.create<typeof MainCoordinatorApi>(coordinatorActorPath);
+    testReportDiv.innerHTML += `<p>Main Test Coordinator added with address: ${coordinator.id}</p>`;
 
     testReportDiv.innerHTML += `<p>Sending RUN_TEST_SUITE command to coordinator...</p>`;
 
-    const results = await postalService.PostMessage<typeof MainCoordinatorApi>(
-      {
-        target: coordinatorAddress,
-        type: "RUN_TEST_SUITE",
-        payload: undefined,
-      },
-      true,
-    );
+    const results = await coordinator.RUN_TEST_SUITE();
 
     testReportDiv.innerHTML = "<h2>Test Report</h2>";
 

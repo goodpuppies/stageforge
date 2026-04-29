@@ -86,6 +86,7 @@ export type BaseMessage<K extends MessageType> = {
   // deno-lint-ignore no-explicit-any
   type: any | CallbackType<any>;
   payload?: unknown;
+  transfer?: Transferable[];
 };
 
 // AddressedMessage interface
@@ -143,6 +144,7 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
     type: K;
     payload?: Parameters<T[K]>[0];
     target: ActorId | ActorId[] | SystemType;
+    transfer?: Transferable[];
   };
 }[keyof T];
 
@@ -151,6 +153,27 @@ export type ReturnFrom<
   T extends Record<string, (p: any) => any>,
   M extends MessageFrom<T>,
 > = ReturnType<T[M["type"]]>;
+
+export type ActorResult<T> = PromiseLike<T> & {
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<T | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<T>;
+};
+
+type ActorMethod<T> = T extends (...args: infer Args) => infer Ret ? Args extends [] ? () => ActorResult<Awaited<Ret>>
+  : Args[0] extends null | void ? (payload?: Args[0]) => ActorResult<Awaited<Ret>>
+  : undefined extends Args[0] ? (payload?: Args[0]) => ActorResult<Awaited<Ret>>
+  : (payload: Args[0]) => ActorResult<Awaited<Ret>>
+  : never;
+
+export type ActorClient<T extends GenericActorFunctions> =
+  & {
+    readonly id: ActorId;
+  }
+  & {
+    [K in keyof T]: ActorMethod<T[K]>;
+  };
 
 export type WorkerConstructor = new (
   scriptURL: string | URL,

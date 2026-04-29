@@ -1,5 +1,6 @@
 import { SignalEvent } from "./Signal.ts";
 import {
+  type ActorClient,
   type ActorId,
   type ActorW,
   type GenericActorFunctions,
@@ -8,10 +9,11 @@ import {
   type ReturnFrom,
   System,
   type TopicName,
+  type tsfile,
   type WorkerConstructor,
   type workerpayload,
 } from "./types.ts";
-import { PostMessage, runFunctions } from "./shared.ts";
+import { createActorClient, PostMessage, runFunctions } from "./shared.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { assert } from "@goodpuppies/logicalassert";
 
@@ -32,6 +34,15 @@ export class PostalService {
 
   public register(newFunctions: GenericActorFunctions) {
     this.functions = { ...this.functions, ...newFunctions };
+  }
+
+  async create<T extends GenericActorFunctions = GenericActorFunctions>(
+    file: tsfile | URL,
+    base?: tsfile | URL,
+    parentOverride?: ActorId | typeof System,
+  ): Promise<ActorClient<T>> {
+    const id = await this.functions.CREATE({ file, base, parent: parentOverride }, this) as ActorId;
+    return createActorClient<T>(id, this);
   }
 
   public functions: GenericActorFunctions = {
@@ -73,9 +84,10 @@ export class PostalService {
 
     const id = await assert(input).with({
       object: async (input: { file: string; parent: ActorId | undefined; base?: string | URL }) => {
-        const workerUrl = assert(typeof Deno).with({
-          object: () => {
-            return new URL(input.file, input.base ?? `file://${Deno.cwd()}/`).href;
+        const deno = (globalThis as { Deno?: { cwd(): string } }).Deno;
+        const workerUrl = assert(deno).with({
+          object: (deno: { cwd(): string }) => {
+            return new URL(input.file, input.base ?? `file://${deno.cwd()}/`).href;
           },
           undefined: () => {
             const baseUrl = globalThis.location.href.substring(
@@ -254,13 +266,16 @@ export class PostalService {
   };
 
   PostMessage<
-    T extends Record<string, (payload: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   PostMessage<
-    T extends Record<string, (payload: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   PostMessage<
-    T extends Record<string, (payload: unknown) => unknown>,
+    // deno-lint-ignore no-explicit-any
+    T extends Record<string, (payload: any, ctx?: any) => any>,
   >(message: MessageFrom<T>, cb?: boolean): unknown {
     return PostMessage(message, cb, this);
   }

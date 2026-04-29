@@ -7,19 +7,17 @@ Mainly used in https://github.com/goodpuppies/petplay
 ### main.ts - Create the coordinator
 
 ```ts
-import { type ActorId, PostalService } from "@goodpuppies/stageforge";
+import { PostalService } from "@goodpuppies/stageforge";
+import type { api as mainApi } from "./actor.ts";
 
 // Initialize the postal service (central coordinator)
 const postalService = new PostalService();
 
 // Create a new actor from the specified file
-const mainActorId = await postalService.functions.CREATE({ file: "./actor.ts" }) as ActorId;
+const mainActor = await postalService.create<typeof mainApi>("./actor.ts");
 
 // Send a message and wait for response
-const response = await postalService.PostMessage({
-  target: mainActorId,
-  type: "HELLO",
-}, true);
+const response = await mainActor.HELLO();
 
 console.log(response); // "hi"
 ```
@@ -56,13 +54,10 @@ new PostMan(state, api);
 // Your main actor logic
 async function main(_payload: string) {
   // Create a child actor
-  const subActorId = await PostMan.create("./sub.ts");
+  const subActor = await PostMan.create<typeof subApi>("./sub.ts");
 
   // Send a message with type checking
-  const response = await PostMan.PostMessage<typeof subApi>({
-    target: subActorId,
-    type: "GETSTRING",
-  }, true);
+  const response = await subActor.GETSTRING();
 
   console.log(response);
 }
@@ -93,6 +88,48 @@ export const api = {
 // Initialize the actor with state and API
 new PostMan(state, api);
 ```
+
+## New Features in 0.3.0
+
+### Simpler Actor Calls
+
+`create` can now return a typed actor client. Calling a method without awaiting sends a fire-and-forget message, while awaiting the call waits for the
+handler result.
+
+```ts
+import type { api as subApi } from "./sub.ts";
+
+const sub = await PostMan.create<typeof subApi>("./sub.ts");
+
+sub.LOG();
+
+const text = await sub.GETSTRING();
+```
+
+The actor id is still available for lower-level routing:
+
+```ts
+console.log(sub.id);
+```
+
+### Transferable Payloads
+
+Explicit `PostMessage` calls now support transfer lists for ownership-moving worker messages. The `transfer` field is optional; omit it for normal
+cloned messages.
+
+```ts
+const data = new Uint8Array([1, 2, 3, 4]);
+
+const sum = await PostMan.PostMessage<typeof transferApi>({
+  target: actor.id,
+  type: "SUM",
+  payload: data,
+  transfer: [data.buffer],
+}, true);
+```
+
+Transfer lists are intentionally kept on `PostMessage` instead of the actor-client shorthand, because transferring detaches ownership from the sender.
+Transfer with multiple targets is rejected.
 
 ## New Features in 0.2.0
 
@@ -138,7 +175,7 @@ const state = actorState({
 console.log("my parent is", state.parent);
 
 //parents can be overriden on creation
-const sub = await PostMan.create("./actors/sub.ts", undefined, System);
+const sub = await PostMan.create<typeof subApi>("./actors/sub.ts", undefined, System);
 ```
 
 ### PostMan context is exposed

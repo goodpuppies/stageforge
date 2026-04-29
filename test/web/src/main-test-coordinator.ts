@@ -1,4 +1,4 @@
-import { type ActorId, actorState, PostMan } from "@goodpuppies/stageforge";
+import { type ActorClient, actorState, PostMan } from "@goodpuppies/stageforge";
 import type { api as TestActorApi } from "./test-actor.ts";
 
 const state = actorState({
@@ -12,14 +12,14 @@ export const api = {
   },
   RUN_TEST_SUITE: async () => {
     const results: Array<{ description: string; status: string; details?: string }> = [];
-    let testActorAddress: ActorId | undefined;
+    let testActor: ActorClient<typeof TestActorApi> | undefined;
 
     try {
       results.push({ description: "Attempting to create test-actor", status: "running" });
       const testActorScriptUrl = new URL("./test-actor.ts", import.meta.url).href;
-      testActorAddress = await PostMan.create(testActorScriptUrl);
+      testActor = await PostMan.create<typeof TestActorApi>(testActorScriptUrl);
       results[results.length - 1].status = "success";
-      results[results.length - 1].details = `Test Actor created with address: ${testActorAddress}`;
+      results[results.length - 1].details = `Test Actor created with address: ${testActor.id}`;
 
       // Create two more test actors for topic testing (they will also join 'test-topic' on __INIT__)
       results.push({ description: "Topic API: Create 2 additional actors for topic", status: "running" });
@@ -45,14 +45,7 @@ export const api = {
     const echoPayload = "Hello from Coordinator!";
     results.push({ description: `Sending ECHO with payload: "${echoPayload}"`, status: "running" });
     try {
-      const echoResult = await PostMan.PostMessage<typeof TestActorApi>(
-        {
-          target: testActorAddress!,
-          type: "ECHO",
-          payload: echoPayload,
-        },
-        true,
-      );
+      const echoResult = await testActor!.ECHO(echoPayload);
       results[results.length - 1].status = echoResult === echoPayload ? "success" : "error";
       results[results.length - 1].details = `ECHO Result: "${echoResult}" (Expected: "${echoPayload}")`;
     } catch (e) {
@@ -64,14 +57,7 @@ export const api = {
     const addPayloadSuccess = { a: 15, b: 10 };
     results.push({ description: `Sending ADD with payload: ${JSON.stringify(addPayloadSuccess)}`, status: "running" });
     try {
-      const addResultSuccess = await PostMan.PostMessage<typeof TestActorApi>(
-        {
-          target: testActorAddress!,
-          type: "ADD",
-          payload: addPayloadSuccess,
-        },
-        true,
-      );
+      const addResultSuccess = await testActor!.ADD(addPayloadSuccess);
       const expectedSum = addPayloadSuccess.a + addPayloadSuccess.b;
       results[results.length - 1].status = addResultSuccess === expectedSum ? "success" : "error";
       results[results.length - 1].details = `ADD Result: ${addResultSuccess} (Expected: ${expectedSum})`;
@@ -82,12 +68,14 @@ export const api = {
 
     // Test Topic API and Address Book Verification
     results.push({ description: "Topic API: Verify initial test actor in coordinator's address book", status: "running" });
-    if (testActorAddress && state.addressBook.has(testActorAddress)) {
+    if (testActor && state.addressBook.has(testActor.id)) {
       results[results.length - 1].status = "success";
-      results[results.length - 1].details = `Coordinator's address book contains the explicitly created test actor: ${testActorAddress}`;
+      results[results.length - 1].details = `Coordinator's address book contains the explicitly created test actor: ${testActor.id}`;
     } else {
       results[results.length - 1].status = "error";
-      results[results.length - 1].details = `Coordinator's address book DOES NOT contain ${testActorAddress}. Current book: ${Array.from(state.addressBook).join(", ")}. Expected to find ${testActorAddress}`;
+      results[results.length - 1].details = `Coordinator's address book DOES NOT contain ${testActor?.id}. Current book: ${
+        Array.from(state.addressBook).join(", ")
+      }. Expected to find ${testActor?.id}`;
     }
 
     results.push({ description: "Topic API: Verify total number of actors in coordinator's address book (expected 3 test-actors)", status: "running" });
