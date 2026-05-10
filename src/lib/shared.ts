@@ -1,6 +1,11 @@
 import { PostalService } from "./PostalService.ts";
 import type { GenericActorFunctions, Message, TargetMessage } from "./types.ts";
-import { processBigInts, StandardizeAddress } from "./utils.ts";
+import {
+  popTransferForPost,
+  processBigInts,
+  resolveActorRefsForClone,
+  StandardizeAddress,
+} from "./utils.ts";
 import { Signal } from "./Signal.ts";
 
 
@@ -35,7 +40,8 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
   // Execute
   const ret = await functions[baseType]?.(message.payload);
 
-  // If the function returned a value and we have a callback ID, send a response
+  // `cb: true` waits on a reply: only `return X` (X not undefined) sends the RPC ack.
+  // `return;` or falling off the end does not complete the wait on the sender.
   if (ret !== undefined) {
     // Use the same format for response: baseType:callbackId
     const responseType = callbackId ? `${baseType}:${callbackId}` : baseType;
@@ -60,12 +66,18 @@ export async function PostMessage(
     if (cb) {
       throw new Error("Cannot use callback with multiple targets");
     }
-    
+    if ("transfer" in message && (message as { transfer?: unknown }).transfer != null) {
+      const t = (message as { transfer?: Transferable[] }).transfer;
+      if (Array.isArray(t) && t.length > 0) {
+        throw new Error("PostMessage: transfer is not supported with multiple targets");
+      }
+    }
+
     const promises = message.target.map(target => {
       const singleMessage = { ...message, target };
       return PostMessage(singleMessage, false, ctx);
     });
-    
+
     return Promise.all(promises);
   }
 
@@ -88,6 +100,10 @@ export async function PostMessage(
     worker = ctx.worker;
   }
 
+  message = resolveActorRefsForClone(message);
+
+  const transfer = popTransferForPost(message as Record<string, unknown>);
+
   if (cb) {
     // Generate a UUID for this callback
     const callbackId = crypto.randomUUID();
@@ -106,7 +122,7 @@ export async function PostMessage(
       }
     }
     
-    worker.postMessage(message);
+    worker.postMessage(message, transfer ?? []);
     try {
       return await messageCallback.wait();
     } finally {
@@ -114,6 +130,6 @@ export async function PostMessage(
     }
   }
   else {
-    worker.postMessage(message);
+    worker.postMessage(message, transfer ?? []);
   }
 }

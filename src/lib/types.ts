@@ -6,6 +6,39 @@ export type ActorId = string & { readonly __actorID: unique symbol };
 
 export type TopicName = string & { readonly __topicName: unique symbol };
 
+export const ActorIdValue = Symbol.for("stageforge.actorId");
+
+export type ActorRefBase = {
+  readonly [ActorIdValue]: ActorId;
+  toString(): string;
+  valueOf(): string;
+  [Symbol.toPrimitive](): string;
+};
+
+type AwaitedReturn<T> = T extends Promise<infer U> ? U : T;
+
+type ActorMethod<F> = F extends (payload: infer P) => infer R
+  ? unknown extends P
+    ? () => Promise<AwaitedReturn<R>>
+    : [P] extends [null | undefined | void]
+      ? () => Promise<AwaitedReturn<R>>
+      : (payload: P) => Promise<AwaitedReturn<R>>
+  : never;
+
+export type ActorRef<T extends Record<string, (payload: any) => any>> =
+  & ActorId
+  & ActorRefBase
+  & {
+    [K in keyof T as K extends `__${string}` ? never : K]: ActorMethod<T[K]>;
+  };
+
+export function resolveActorId(value: unknown): ActorId {
+  if (typeof value === "object" && value !== null && ActorIdValue in value) {
+    return (value as ActorRefBase)[ActorIdValue];
+  }
+  return value as ActorId;
+}
+
 export function createActorId(value: string): ActorId {
   // Validate format: name@uuid
   if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
@@ -87,11 +120,14 @@ export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
     fm: ActorId;
     to: ActorId | ActorId[]
   };
+  transfer?: Transferable[];
 };
 
 // TargetedMessage interface
 export type TargetedMessage<K extends MessageType> = BaseMessage<K> & {
   target: ActorId | ActorId[];
+  /** Passed as `postMessage` transfer list; stripped before clone (single target only). */
+  transfer?: Transferable[];
 };
 
 // Message type
@@ -106,6 +142,7 @@ export type GenericMessage = {
   };
   type: string;
   payload: unknown;
+  transfer?: Transferable[];
 };
 
 // AcFnRet type
@@ -135,6 +172,7 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
     type: K;
     payload: Parameters<T[K]>[0];
     target: string | string[];
+    transfer?: Transferable[];
   }
 }[keyof T];
 

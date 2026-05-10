@@ -8,8 +8,10 @@ import {
   type TopicName,
   type ActorId,
   type ActorW,
+  resolveActorId,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
+import { popTransferForPost, resolveActorRefsForClone } from "./utils.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { SignalingClient } from "./SignalingClient.ts";
 import type { functions as defaultActorApi } from "./DefaultActorFunctions.ts"
@@ -43,6 +45,7 @@ export class PostalService {
   public static actors: Map<ActorId, ActorW> = new Map();
   public static lastSender: ActorId | null = null;
   public static debugMode = false;
+  public static onActorWorkerError?: (event: ErrorEvent) => void;
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
   private callbackMap: Map<symbol, Signal<any>> = new Map();
   private static WorkerClass: WorkerConstructor = Worker;
@@ -318,6 +321,11 @@ export class PostalService {
 
     const worker = new PostalService.WorkerClass(workerUrl, { name: address, type: "module" });
     worker.onmessage = (event: MessageEvent<Message>) => this.OnMessage(event.data);
+    worker.onerror = (event) => PostalService.onActorWorkerError?.(event);
+    worker.onmessageerror = () =>
+      PostalService.onActorWorkerError?.(
+        new ErrorEvent("messageerror", { message: "Actor worker message error" }),
+      );
 
     const callbackKey = Symbol('actor-creation');
     const actorSignal = new Signal<ActorId>();
@@ -357,7 +365,16 @@ export class PostalService {
 
     LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
     const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
-    
+
+    const rawTransfer = (message as Record<string, unknown>).transfer;
+    if (
+      addresses.length > 1 && Array.isArray(rawTransfer) && rawTransfer.length > 0
+    ) {
+      throw new Error(
+        "PostalService relay: transfer is not supported when addressing multiple actors",
+      );
+    }
+
     for (const address of addresses) {
       const singleMessageStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
       // Create a shallow copy for modification to avoid altering the original message object for subsequent loops/logs
@@ -370,7 +387,9 @@ export class PostalService {
         isRelay = true;
         const actor = PostalService.actors.get(currentMessage.address.to as ActorId);
         if (actor) {
-          actor.worker.postMessage(currentMessage);
+          const cloneMessage = resolveActorRefsForClone(currentMessage);
+          const transfer = popTransferForPost(cloneMessage as Record<string, unknown>);
+          actor.worker.postMessage(cloneMessage, transfer ?? []);
         } else {
           LogChannel.log("postalservice", "Error: Actor not found for message relay:", currentMessage.address.to);
         }
@@ -413,7 +432,9 @@ export class PostalService {
       T extends Record<string, (payload: any) => any>
     >(message: MessageFrom<T>, cb?: boolean): any {
       const perfLogStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
-      const actualTarget = message.target; // or however target is determined
+      const actualTarget = Array.isArray(message.target)
+        ? message.target.map((target) => resolveActorId(target))
+        : resolveActorId(message.target); // or however target is determined
       const actor = PostalService.actors.get(actualTarget as ActorId);
 
       if (actor) {
@@ -442,7 +463,9 @@ export class PostalService {
            }
            return result;
         } else {
-          actor.worker.postMessage(message);
+          const cloneMessage = resolveActorRefsForClone(message);
+          const transfer = popTransferForPost(cloneMessage as Record<string, unknown>);
+          actor.worker.postMessage(cloneMessage, transfer ?? []);
           if (PostalService._isPerfLoggingPhysicallyOn) {
               const perfLogEndTime = performance.now();
               const duration = parseFloat((perfLogEndTime - perfLogStartTime).toFixed(3));
