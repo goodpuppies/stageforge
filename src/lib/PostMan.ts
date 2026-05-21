@@ -1,20 +1,23 @@
 import {
-  type GenericActorFunctions,
-  type tsfile,
-  type BaseState,
-  type MessageFrom,
-  type ReturnFrom,
-  System,
   type ActorId,
   ActorIdValue,
   type ActorRef,
+  type BaseState,
   createTopicName,
+  type GenericActorFunctions,
+  type MessageFrom,
   resolveActorId,
+  type ReturnFrom,
+  System,
+  type tsfile,
 } from "./types.ts";
 import { functions } from "./DefaultActorFunctions.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
 
-function createActorRef<T extends GenericActorFunctions>(actorId: ActorId): ActorRef<T> {
+function createActorRef<T extends GenericActorFunctions>(
+  actorId: ActorId,
+): ActorRef<T> {
   const ref = {
     [ActorIdValue]: actorId,
     toString: () => actorId,
@@ -31,7 +34,9 @@ function createActorRef<T extends GenericActorFunctions>(actorId: ActorId): Acto
       if (prop === ActorIdValue) {
         return actorId;
       }
-      if (prop === "toString" || prop === "valueOf" || prop === Symbol.toPrimitive) {
+      if (
+        prop === "toString" || prop === "valueOf" || prop === Symbol.toPrimitive
+      ) {
         return () => actorId;
       }
       if (typeof prop !== "string") {
@@ -60,7 +65,7 @@ function createActorRef<T extends GenericActorFunctions>(actorId: ActorId): Acto
 
 export class PostMan {
   private static addressBook: Set<ActorId>;
-  private static functions = functions as GenericActorFunctions
+  private static functions = functions as GenericActorFunctions;
   static worker: Worker = self as unknown as Worker;
   private static state: BaseState;
 
@@ -72,13 +77,17 @@ export class PostMan {
     PostMan.state.name = actorState.name;
     PostMan.addressBook = actorState.addressBook;
     PostMan.functions = { ...PostMan.functions, ...functions };
-    
+    LogChannel.log("actorroute", {
+      event: "postman-construct",
+      actorName: actorState.name,
+      availableFunctions: Object.keys(PostMan.functions),
+    });
+
     // Set up message handler
     PostMan.worker.onmessage = (event: MessageEvent) => {
-      runFunctions(event.data, PostMan.functions, PostMan)
+      runFunctions(event.data, PostMan.functions, PostMan);
     };
   }
-
 
   static async create<T extends GenericActorFunctions = GenericActorFunctions>(
     actorname: tsfile | URL,
@@ -87,22 +96,28 @@ export class PostMan {
     //console.log("create", actorname)
     interface payload {
       actorname: tsfile | URL;
-      base?: tsfile | URL
+      base?: tsfile | URL;
     }
-    let payload: payload
+    let payload: payload;
     if (base) {
-      payload = { actorname, base }
-    }
-    else {
-      payload = {actorname}
+      payload = { actorname, base };
+    } else {
+      payload = { actorname };
     }
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
-      payload: payload
-    }, true) as ActorId
+      payload: payload,
+    }, true) as ActorId;
+    LogChannel.log("actorroute", {
+      event: "postman-create-result",
+      requester: PostMan.state.id,
+      actorname,
+      base,
+      result,
+    });
 
-    PostMan.addressBook.add(result)
+    PostMan.addressBook.add(result);
     return createActorRef<T>(result);
   }
 
@@ -112,10 +127,10 @@ export class PostMan {
       type: "TOPICUPDATE",
       payload: {
         delete: false,
-        name: topic
-      }
-    })
-    PostMan.state.topics.add(createTopicName(topic))
+        name: topic,
+      },
+    });
+    PostMan.state.topics.add(createTopicName(topic));
   }
   static delTopic(topic: string) {
     PostMan.PostMessage({
@@ -123,21 +138,21 @@ export class PostMan {
       type: "TOPICUPDATE",
       payload: {
         delete: true,
-        name: topic
-      }
-    })
-    PostMan.state.topics.delete(createTopicName(topic))
+        name: topic,
+      },
+    });
+    PostMan.state.topics.delete(createTopicName(topic));
   }
 
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any) => any>,
   >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any) => any>,
   >(message: MessageFrom<T>, cb?: false | undefined): void;
   // Implementation
   static PostMessage<
-    T extends Record<string, (payload: any) => any>
+    T extends Record<string, (payload: any) => any>,
   >(message: MessageFrom<T>, cb?: boolean): any {
     if ("target" in message) {
       const target = message.target;
@@ -147,6 +162,12 @@ export class PostMan {
           ? target.map((item) => resolveActorId(item))
           : resolveActorId(target),
       };
+      LogChannel.log("actorroute", {
+        event: "postman-resolve-target",
+        actor: PostMan.state?.id,
+        type: message.type,
+        resolvedTarget: message.target,
+      });
     }
     return PostMessage(message as any, cb, this);
   }

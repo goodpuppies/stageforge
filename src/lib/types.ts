@@ -18,11 +18,9 @@ export type ActorRefBase = {
 type AwaitedReturn<T> = T extends Promise<infer U> ? U : T;
 
 type ActorMethod<F> = F extends (payload: infer P) => infer R
-  ? unknown extends P
-    ? () => Promise<AwaitedReturn<R>>
-    : [P] extends [null | undefined | void]
-      ? () => Promise<AwaitedReturn<R>>
-      : (payload: P) => Promise<AwaitedReturn<R>>
+  ? unknown extends P ? () => Promise<AwaitedReturn<R>>
+  : [P] extends [null | undefined | void] ? () => Promise<AwaitedReturn<R>>
+  : (payload: P) => Promise<AwaitedReturn<R>>
   : never;
 
 export type ActorRef<T extends Record<string, (payload: any) => any>> =
@@ -41,8 +39,13 @@ export function resolveActorId(value: unknown): ActorId {
 
 export function createActorId(value: string): ActorId {
   // Validate format: name@uuid
-  if (!/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    throw new Error(`Invalid ActorId format: ${value}. Must be in the format name@uuid`);
+  if (
+    !/^[^@]+@[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      .test(value)
+  ) {
+    throw new Error(
+      `Invalid ActorId format: ${value}. Must be in the format name@uuid`,
+    );
   }
   return value as ActorId;
 }
@@ -95,18 +98,17 @@ export interface MessageAddressArray {
   to: string | string[];
 }
 
-
 // Union of all possible message addresses
 export type MessageAddress = MessageAddressSingle | MessageAddressArray;
 
 // MessageType type
-export type MessageType = GenericMessage
+export type MessageType = GenericMessage;
 
 // CallbackType type
 type CallbackType<T extends string> = `CB:${T}`;
 
 // tsfile type
-export type tsfile = string
+export type tsfile = string;
 
 // BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
@@ -118,7 +120,7 @@ export type BaseMessage<K extends MessageType> = {
 export type AddressedMessage<K extends MessageType> = BaseMessage<K> & {
   address: {
     fm: ActorId;
-    to: ActorId | ActorId[]
+    to: ActorId | ActorId[];
   };
   transfer?: Transferable[];
 };
@@ -146,7 +148,7 @@ export type GenericMessage = {
 };
 
 // AcFnRet type
-type AcFnRet = void | Promise<void> | unknown | Promise<unknown>
+type AcFnRet = void | Promise<void> | unknown | Promise<unknown>;
 
 // GenericActorFunctions type
 export type GenericActorFunctions = {
@@ -156,6 +158,12 @@ export type GenericActorFunctions = {
 // Actor interface to represent an actor in the system
 export interface ActorW {
   worker: Worker;
+  actorname?: string;
+  base?: string | URL;
+  workerUrl?: string;
+  createdAt?: number;
+  reloadedAt?: number;
+  reloadCount?: number;
 }
 
 // PairAddress interface
@@ -173,10 +181,10 @@ export type MessageFrom<T extends Record<string, (p: any) => any>> = {
     payload: Parameters<T[K]>[0];
     target: string | string[];
     transfer?: Transferable[];
-  }
+  };
 }[keyof T];
 
 export type ReturnFrom<
   T extends Record<string, (p: any) => any>,
-  M extends MessageFrom<T>
+  M extends MessageFrom<T>,
 > = ReturnType<T[M["type"]]>;

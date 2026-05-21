@@ -7,12 +7,16 @@ import {
   StandardizeAddress,
 } from "./utils.ts";
 import { Signal } from "./Signal.ts";
-
+import { LogChannel } from "@mommysgoodpuppy/logchannel";
 
 // Map to store callbacks by UUID
 const callbackMap = new Map<string, Signal<unknown>>();
 
-export async function runFunctions(message: Message, functions: GenericActorFunctions, ctx: any) {
+export async function runFunctions(
+  message: Message,
+  functions: GenericActorFunctions,
+  ctx: any,
+) {
   if (message.payload) {
     message.payload = processBigInts(message.payload);
   }
@@ -32,7 +36,17 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
 
   // Check if the function exists
   if (!functions[baseType]) {
-    throw new Error(`Function not found for message type: ${baseType} (original: ${message.type})`);
+    LogChannel.log("actorroute", {
+      event: "missing-function",
+      baseType,
+      originalType: message.type,
+      from: message.address.fm,
+      to: message.address.to,
+      availableFunctions: Object.keys(functions),
+    });
+    throw new Error(
+      `Function not found for message type: ${baseType} (original: ${message.type})`,
+    );
   }
   const originalType = message.type;
   message.type = baseType;
@@ -40,16 +54,16 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
   // Execute
   const ret = await functions[baseType]?.(message.payload);
 
-  // `cb: true` waits on a reply: only `return X` (X not undefined) sends the RPC ack.
-  // `return;` or falling off the end does not complete the wait on the sender.
-  if (ret !== undefined) {
+  // `cb: true` adds a callback id to the message type. Only those messages
+  // should receive returned values; fire-and-forget sends must ignore returns.
+  if (callbackId && ret !== undefined) {
     // Use the same format for response: baseType:callbackId
-    const responseType = callbackId ? `${baseType}:${callbackId}` : baseType;
+    const responseType = `${baseType}:${callbackId}`;
 
     ctx.PostMessage({
       target: message.address.fm,
       type: responseType,
-      payload: ret
+      payload: ret,
     });
   }
 
@@ -60,20 +74,25 @@ export async function runFunctions(message: Message, functions: GenericActorFunc
 export async function PostMessage(
   message: TargetMessage | Message,
   cb?: boolean,
-  ctx?: any
+  ctx?: any,
 ): Promise<unknown | void> {
-  if ('target' in message && Array.isArray(message.target)) {
+  if ("target" in message && Array.isArray(message.target)) {
     if (cb) {
       throw new Error("Cannot use callback with multiple targets");
     }
-    if ("transfer" in message && (message as { transfer?: unknown }).transfer != null) {
+    if (
+      "transfer" in message &&
+      (message as { transfer?: unknown }).transfer != null
+    ) {
       const t = (message as { transfer?: Transferable[] }).transfer;
       if (Array.isArray(t) && t.length > 0) {
-        throw new Error("PostMessage: transfer is not supported with multiple targets");
+        throw new Error(
+          "PostMessage: transfer is not supported with multiple targets",
+        );
       }
     }
 
-    const promises = message.target.map(target => {
+    const promises = message.target.map((target) => {
       const singleMessage = { ...message, target };
       return PostMessage(singleMessage, false, ctx);
     });
@@ -84,19 +103,20 @@ export async function PostMessage(
   message = StandardizeAddress(message, ctx);
 
   if (Array.isArray(message.address.to)) {
-    throw new Error("PostMessage in shared.ts should not receive array addresses. Use the PostalService.PostMessage method for that.");
+    throw new Error(
+      "PostMessage in shared.ts should not receive array addresses. Use the PostalService.PostMessage method for that.",
+    );
   }
 
   let worker;
   if (!ctx.worker) {
     const actor = PostalService.actors.get(message.address.to);
     if (!actor) {
-      console.error("Actor not found: ",message)
+      console.error("Actor not found: ", message);
       throw new Error(`Actor not found: ${message.address.to}`);
     }
     worker = actor.worker;
-  }
-  else {
+  } else {
     worker = ctx.worker;
   }
 
@@ -107,29 +127,40 @@ export async function PostMessage(
   if (cb) {
     // Generate a UUID for this callback
     const callbackId = crypto.randomUUID();
-    
+
     // Create a new signal for this callback
     const messageCallback = new Signal<unknown>();
-    
+
     // Store the callback in the map with the UUID as key
     callbackMap.set(callbackId, messageCallback);
-    
+
     // Modify the message type to include the UUID
-    if ('type' in message) {
+    if ("type" in message) {
       // Make sure we don't add a UUID to a message that already has one
-      if (!message.type.includes(':')) {
+      if (!message.type.includes(":")) {
         message.type = `${message.type}:${callbackId}`;
       }
     }
-    
+
     worker.postMessage(message, transfer ?? []);
+    LogChannel.log("actorroute", {
+      event: "post-callback",
+      type: message.type,
+      from: message.address.fm,
+      to: message.address.to,
+    });
     try {
       return await messageCallback.wait();
     } finally {
       callbackMap.delete(callbackId);
     }
-  }
-  else {
+  } else {
+    LogChannel.log("actorroute", {
+      event: "post",
+      type: message.type,
+      from: message.address.fm,
+      to: message.address.to,
+    });
     worker.postMessage(message, transfer ?? []);
   }
 }

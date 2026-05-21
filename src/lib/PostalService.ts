@@ -15,6 +15,16 @@ import { popTransferForPost, resolveActorRefsForClone } from "./utils.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { SignalingClient } from "./SignalingClient.ts";
 import type { functions as defaultActorApi } from "./DefaultActorFunctions.ts"
+import {
+  type ActorInspectInfo,
+  inspectActors,
+  type RebootPayload,
+  rebootActorGraph,
+  type RootActorConfig,
+  restoreActor,
+  shutdownActor,
+  snapshotActor,
+} from "./ActorLifecycle.ts";
 
 // Worker constructor type that matches the standard Worker constructor
 export type WorkerConstructor = new (
@@ -24,6 +34,10 @@ export type WorkerConstructor = new (
 interface custompayload {
   actorname: string;
   base?: string | URL
+}
+
+interface ReloadPayload {
+  actorId: ActorId;
 }
 
 interface PerfData {
@@ -51,6 +65,8 @@ export class PostalService {
   private static WorkerClass: WorkerConstructor = Worker;
   private signalingClient: SignalingClient | null = null;
   private static mainInstance: PostalService | null = null;
+  private static rootActor: RootActorConfig | null = null;
+  private static rebootInProgress = false;
 
   // Performance Metrics
   private static messageTimings: PerfData[] = [];
@@ -229,6 +245,13 @@ export class PostalService {
       LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
       return id
     },
+    INSPECT: (_payload: null): ActorInspectInfo[] => inspectActors(PostalService.actors),
+    RELOAD: async (payload: ReloadPayload): Promise<ActorInspectInfo> => {
+      return await this.reload(payload.actorId);
+    },
+    REBOOT: async (payload: RebootPayload | null): Promise<RootActorConfig> => {
+      return await this.reboot(payload ?? null);
+    },
     LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
       LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
 
@@ -245,8 +268,8 @@ export class PostalService {
     DELETE: (payload: ActorId) => {
       PostalService.actors.delete(payload);
     },
-    MURDER: (payload: ActorId) => {
-      PostalService.murder(payload);
+    MURDER: async (payload: ActorId) => {
+      await this.murder(payload);
     },
     TOPICUPDATE: async (payload: { delete: boolean; name: TopicName }) => {
       const delmode = payload.delete;
@@ -307,7 +330,23 @@ export class PostalService {
     },
   };
 
-  async add(address: string, base?: string | URL): Promise<ActorId> {
+  setRootActor(
+    actorId: ActorId,
+    startType = "MAIN",
+    startPayload: unknown = null,
+  ): void {
+    const actor = PostalService.actors.get(actorId);
+    if (!actor?.actorname) {
+      throw new Error(`Cannot set root actor without local creation metadata: ${actorId}`);
+    }
+    PostalService.rootActor = { actorId, actorname: actor.actorname, base: actor.base, startType, startPayload };
+  }
+
+  getRootActorId(): ActorId | null {
+    return PostalService.rootActor?.actorId ?? null;
+  }
+
+  async add(address: string, base?: string | URL, actorId?: ActorId): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
 
@@ -334,24 +373,82 @@ export class PostalService {
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
-      payload: { callbackKey: callbackKey.toString(), originalPayload: null },
+      payload: { callbackKey: callbackKey.toString(), originalPayload: null, actorId },
     });
 
     const id = await actorSignal.wait();
     this.callbackMap.delete(callbackKey);
 
     LogChannel.log("postalserviceCreate", "created", id);
-    PostalService.actors.set(id, { worker });
+    PostalService.actors.set(id, {
+      worker,
+      actorname: address,
+      base,
+      workerUrl,
+      createdAt: Date.now(),
+      reloadCount: 0,
+    });
     return id;
   }
 
-  static murder(address: ActorId) {
+  async reload(actorId: ActorId): Promise<ActorInspectInfo> {
+    const oldActor = PostalService.actors.get(actorId);
+    if (!oldActor?.actorname) {
+      throw new Error(`Cannot reload actor without local creation metadata: ${actorId}`);
+    }
+    const snapshot = await snapshotActor(this.lifecyclePost, actorId);
+    await shutdownActor(this.lifecyclePost, actorId, "reload");
+    PostalService.actors.delete(actorId);
+    oldActor.worker.terminate();
+    const loadedActorId = await this.add(oldActor.actorname, oldActor.base, actorId);
+    if (loadedActorId !== actorId) {
+      throw new Error(`Reloaded actor returned unexpected id ${loadedActorId}; expected ${actorId}`);
+    }
+    const nextActor = PostalService.actors.get(actorId)!;
+    nextActor.createdAt = oldActor.createdAt;
+    nextActor.reloadedAt = Date.now();
+    nextActor.reloadCount = (oldActor.reloadCount ?? 0) + 1;
+    await restoreActor(this.lifecyclePost, actorId, snapshot);
+    return inspectActors(PostalService.actors).find((actor) => actor.actorId === actorId)!;
+  }
+
+  async reboot(payload: RebootPayload | null): Promise<RootActorConfig> {
+    if (PostalService.rebootInProgress) {
+      if (PostalService.rootActor) return PostalService.rootActor;
+      throw new Error("Cannot reboot: reboot already in progress and no root actor is registered");
+    }
+    PostalService.rebootInProgress = true;
+    try {
+      return await rebootActorGraph({
+        actors: PostalService.actors,
+        rootActor: PostalService.rootActor,
+        payload,
+        post: this.lifecyclePost,
+        add: this.add.bind(this),
+        clearTopics: () => PostalService.topicRegistry.clear(),
+        clearCallbacks: () => this.callbackMap.clear(),
+        setRootActor: (config) => {
+          PostalService.rootActor = config;
+        },
+      });
+    } finally {
+      PostalService.rebootInProgress = false;
+    }
+  }
+
+  async murder(address: ActorId): Promise<void> {
     const actor = PostalService.actors.get(address);
     if (actor) {
+      await shutdownActor(this.lifecyclePost, address, "murder");
       actor.worker.terminate();
       PostalService.actors.delete(address);
     }
   }
+
+  private lifecyclePost = (
+    message: { target: string; type: string; payload: unknown },
+    cb?: boolean,
+  ): unknown => this.PostMessage(message as never, cb as never);
 
   OnMessage = async (message: Message): Promise<void> => { 
     const messageStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
