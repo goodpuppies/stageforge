@@ -31,6 +31,7 @@ export type WorkerConstructor = new (
   scriptURL: string | URL,
   options?: WorkerOptions
 ) => Worker;
+const ACTOR_CREATION_TIMEOUT_MS = 15_000;
 interface custompayload {
   actorname: string;
   base?: string | URL
@@ -370,14 +371,33 @@ export class PostalService {
     const actorSignal = new Signal<ActorId>();
     this.callbackMap.set(callbackKey, actorSignal);
 
+    // Let a native module worker complete its first initialization turn before
+    // delivering INIT. IrohWebWorker previously introduced this microtask delay
+    // implicitly; keeping it here preserves native workers without the wrapper.
+    await Promise.resolve();
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
       payload: { callbackKey: callbackKey.toString(), originalPayload: null, actorId },
     });
 
-    const id = await actorSignal.wait();
-    this.callbackMap.delete(callbackKey);
+    let id: ActorId;
+    try {
+      id = await Promise.race([
+        actorSignal.wait(),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error(`Timed out creating actor ${address} after ${ACTOR_CREATION_TIMEOUT_MS}ms`)),
+            ACTOR_CREATION_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      worker.terminate();
+      throw error;
+    } finally {
+      this.callbackMap.delete(callbackKey);
+    }
 
     LogChannel.log("postalserviceCreate", "created", id);
     PostalService.actors.set(id, {
