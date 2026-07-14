@@ -25,7 +25,10 @@ export type RebootPayload = {
   startPayload?: unknown;
 };
 
-type Post = (message: { target: string; type: string; payload: unknown }, cb?: boolean) => unknown;
+type Post = (
+  message: { target: string; type: string; payload: unknown },
+  cb?: boolean,
+) => unknown;
 
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const SNAPSHOT_TIMEOUT_MS = 2_000;
@@ -33,10 +36,14 @@ const RESTORE_TIMEOUT_MS = 5_000;
 const REBOOT_RELEASE_WAIT_MS = 4_000;
 
 function timeout(message: string, ms: number): Promise<never> {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(message)), ms)
+  );
 }
 
-export function inspectActors(actors: Map<ActorId, ActorW>): ActorInspectInfo[] {
+export function inspectActors(
+  actors: Map<ActorId, ActorW>,
+): ActorInspectInfo[] {
   return [...actors.entries()].map(([actorId, actor]) => ({
     actorId,
     actorname: actor.actorname,
@@ -54,20 +61,38 @@ export async function shutdownActor(
   reason: "reload" | "reboot" | "murder",
 ): Promise<void> {
   try {
-    LogChannel.log("postalserviceCreate", `running shutdown hook for ${actorId} (${reason})`);
+    LogChannel.log(
+      "postalserviceCreate",
+      `running shutdown hook for ${actorId} (${reason})`,
+    );
     await Promise.race([
-      post({ target: actorId, type: "SHUTDOWN", payload: { reason } }, true),
+      post(
+        { target: actorId, type: "SHUTDOWN_AND_CLOSE", payload: { reason } },
+        true,
+      ),
       timeout(`SHUTDOWN timed out for ${actorId}`, SHUTDOWN_TIMEOUT_MS),
     ]);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     LogChannel.log(
       "postalservice",
-      `shutdown hook failed for ${actorId}: ${error instanceof Error ? error.message : error}`,
+      `shutdown hook failed for ${actorId}: ${message}`,
+    );
+    // Do not replace or forget a worker that has not acknowledged native
+    // teardown. Continuing would recreate the FFI lifetime race.
+    throw new Error(
+      `Actor ${actorId} did not shut down cooperatively: ${message}`,
+      {
+        cause: error,
+      },
     );
   }
 }
 
-export async function snapshotActor(post: Post, actorId: ActorId): Promise<unknown> {
+export async function snapshotActor(
+  post: Post,
+  actorId: ActorId,
+): Promise<unknown> {
   try {
     return await Promise.race([
       post({ target: actorId, type: "SNAPSHOT", payload: null }, true),
@@ -76,7 +101,9 @@ export async function snapshotActor(post: Post, actorId: ActorId): Promise<unkno
   } catch (error) {
     LogChannel.log(
       "postalservice",
-      `snapshot hook failed for ${actorId}: ${error instanceof Error ? error.message : error}`,
+      `snapshot hook failed for ${actorId}: ${
+        error instanceof Error ? error.message : error
+      }`,
     );
     return null;
   }
@@ -96,7 +123,9 @@ export async function restoreActor(
   } catch (error) {
     LogChannel.log(
       "postalservice",
-      `restore hook failed for ${actorId}: ${error instanceof Error ? error.message : error}`,
+      `restore hook failed for ${actorId}: ${
+        error instanceof Error ? error.message : error
+      }`,
     );
   }
 }
@@ -113,7 +142,9 @@ export async function rebootActorGraph(options: {
 }): Promise<RootActorConfig> {
   const { actors, payload, rootActor } = options;
   const rootActorId = payload?.actorId ?? rootActor?.actorId;
-  if (!rootActorId) throw new Error("Cannot reboot: no root actor is registered");
+  if (!rootActorId) {
+    throw new Error("Cannot reboot: no root actor is registered");
+  }
 
   const existing = actors.get(rootActorId);
   const rootConfig = existing?.actorname
@@ -135,11 +166,18 @@ export async function rebootActorGraph(options: {
         : rootActor.startPayload,
     }
     : null;
-  if (!rootConfig) throw new Error(`Cannot reboot: root actor metadata not found for ${rootActorId}`);
+  if (!rootConfig) {
+    throw new Error(
+      `Cannot reboot: root actor metadata not found for ${rootActorId}`,
+    );
+  }
 
   const actorEntries = [...actors.entries()];
-  await Promise.all(actorEntries.map(([actorId]) => shutdownActor(options.post, actorId, "reboot")));
-  for (const [, actor] of actorEntries) actor.worker.terminate();
+  // Dependants are created after the resources they consume. Tear down in the
+  // opposite order so native owners outlive all borrowed pointers and loops.
+  for (const [actorId] of actorEntries.toReversed()) {
+    await shutdownActor(options.post, actorId, "reboot");
+  }
   actors.clear();
   options.clearTopics();
   options.clearCallbacks();
@@ -148,6 +186,10 @@ export async function rebootActorGraph(options: {
   const newRoot = await options.add(rootConfig.actorname, rootConfig.base);
   const nextConfig = { ...rootConfig, actorId: newRoot };
   options.setRootActor(nextConfig);
-  options.post({ target: newRoot, type: nextConfig.startType, payload: nextConfig.startPayload });
+  options.post({
+    target: newRoot,
+    type: nextConfig.startType,
+    payload: nextConfig.startPayload,
+  });
   return nextConfig;
 }

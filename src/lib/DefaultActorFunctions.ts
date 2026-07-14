@@ -18,10 +18,22 @@ function internalPostMan() {
     };
     functions: {
       __INIT__?: (payload: unknown, actorId: ActorId) => void;
-      __SHUTDOWN__?: (payload: unknown, actorId: ActorId) => unknown | Promise<unknown>;
-      __HEALTH__?: (payload: unknown, actorId: ActorId) => unknown | Promise<unknown>;
-      __SNAPSHOT__?: (payload: unknown, actorId: ActorId) => unknown | Promise<unknown>;
-      __RESTORE__?: (payload: unknown, actorId: ActorId) => unknown | Promise<unknown>;
+      __SHUTDOWN__?: (
+        payload: unknown,
+        actorId: ActorId,
+      ) => unknown | Promise<unknown>;
+      __HEALTH__?: (
+        payload: unknown,
+        actorId: ActorId,
+      ) => unknown | Promise<unknown>;
+      __SNAPSHOT__?: (
+        payload: unknown,
+        actorId: ActorId,
+      ) => unknown | Promise<unknown>;
+      __RESTORE__?: (
+        payload: unknown,
+        actorId: ActorId,
+      ) => unknown | Promise<unknown>;
     };
     worker: Worker;
     PostMessage: (...args: unknown[]) => unknown;
@@ -67,6 +79,24 @@ export const functions = {
       payload,
       InternalPostMan.state.id,
     );
+    return true;
+  },
+  SHUTDOWN_AND_CLOSE: async (payload: unknown) => {
+    const InternalPostMan = internalPostMan();
+    LogChannel.log("postman", "Running cooperative actor shutdown hook...");
+    await InternalPostMan.functions.__SHUTDOWN__?.(
+      payload,
+      InternalPostMan.state.id,
+    );
+    // runFunctions posts the callback response after this function resolves.
+    // Closing on the next task lets that acknowledgement reach the parent first.
+    setTimeout(() => {
+      LogChannel.log(
+        "postman",
+        "Cooperative actor shutdown complete; closing worker",
+      );
+      globalThis.close();
+    }, 0);
     return true;
   },
   HEALTH: async (payload: unknown) => {
@@ -117,7 +147,7 @@ export const functions = {
       payload,
       InternalPostMan.state.id,
     );
-    InternalPostMan.worker.terminate();
+    globalThis.close();
   },
   ADDCONTACT: (payload: ActorId) => {
     const InternalPostMan = internalPostMan();

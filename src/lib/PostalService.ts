@@ -1,27 +1,27 @@
 import { Signal } from "./Signal.ts";
 import {
-  type Message,
-  type MessageFrom,
-  type ReturnFrom,
-  type GenericActorFunctions,
-  System,
-  type TopicName,
   type ActorId,
   type ActorW,
+  type GenericActorFunctions,
+  type Message,
+  type MessageFrom,
   resolveActorId,
+  type ReturnFrom,
+  System,
+  type TopicName,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { popTransferForPost, resolveActorRefsForClone } from "./utils.ts";
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
 import { SignalingClient } from "./SignalingClient.ts";
-import type { functions as defaultActorApi } from "./DefaultActorFunctions.ts"
+import type { functions as defaultActorApi } from "./DefaultActorFunctions.ts";
 import {
   type ActorInspectInfo,
   inspectActors,
-  type RebootPayload,
   rebootActorGraph,
-  type RootActorConfig,
+  type RebootPayload,
   restoreActor,
+  type RootActorConfig,
   shutdownActor,
   snapshotActor,
 } from "./ActorLifecycle.ts";
@@ -29,12 +29,12 @@ import {
 // Worker constructor type that matches the standard Worker constructor
 export type WorkerConstructor = new (
   scriptURL: string | URL,
-  options?: WorkerOptions
+  options?: WorkerOptions,
 ) => Worker;
 const ACTOR_CREATION_TIMEOUT_MS = 15_000;
 interface custompayload {
   actorname: string;
-  base?: string | URL
+  base?: string | URL;
 }
 
 interface ReloadPayload {
@@ -91,24 +91,33 @@ export class PostalService {
       LogChannel.log("postalservice", "Performance logging ENABLED.");
       if (PostalService.perfSummaryTimer === null) {
         PostalService.lastPerfSummaryTime = performance.now();
-        PostalService.currentPeriodPerfData = []; 
+        PostalService.currentPeriodPerfData = [];
         PostalService.perfSummaryTimer = setInterval(
           PostalService.logPerfSummary,
-          PostalService.perfSummaryIntervalMs
-        ) as unknown as number; 
-        LogChannel.log("postalservice", `Perf summary timer STARTED with interval ${PostalService.perfSummaryIntervalMs}ms.`);
+          PostalService.perfSummaryIntervalMs,
+        ) as unknown as number;
+        LogChannel.log(
+          "postalservice",
+          `Perf summary timer STARTED with interval ${PostalService.perfSummaryIntervalMs}ms.`,
+        );
       } else {
-        LogChannel.log("postalservice", "Perf summary timer was already running.");
+        LogChannel.log(
+          "postalservice",
+          "Perf summary timer was already running.",
+        );
       }
-    } else { 
+    } else {
       LogChannel.log("postalservice", "Performance logging DISABLED.");
       if (PostalService.perfSummaryTimer !== null) {
         clearInterval(PostalService.perfSummaryTimer);
         PostalService.perfSummaryTimer = null;
         LogChannel.log("postalservice", "Perf summary timer STOPPED.");
         if (PostalService.currentPeriodPerfData.length > 0) {
-          LogChannel.log("postalservice", "Logging final performance summary data...");
-          PostalService.logPerfSummary(); 
+          LogChannel.log(
+            "postalservice",
+            "Logging final performance summary data...",
+          );
+          PostalService.logPerfSummary();
         }
       }
     }
@@ -133,7 +142,9 @@ export class PostalService {
   private static logPerfSummary(): void {
     const now = performance.now();
     const actualIntervalMs = now - PostalService.lastPerfSummaryTime;
-    const pendingRepliesCount = PostalService.mainInstance ? PostalService.mainInstance.callbackMap.size : 0;
+    const pendingRepliesCount = PostalService.mainInstance
+      ? PostalService.mainInstance.callbackMap.size
+      : 0;
 
     const dataToSummarize = [...PostalService.currentPeriodPerfData];
     PostalService.currentPeriodPerfData = []; // Clear for the next interval
@@ -168,7 +179,8 @@ export class PostalService {
     for (const entry of dataToSummarize) {
       totalDurationMs += entry.durationMs;
       typeCounts[entry.messageType] = (typeCounts[entry.messageType] || 0) + 1;
-      typeDurations[entry.messageType] = (typeDurations[entry.messageType] || 0) + entry.durationMs;
+      typeDurations[entry.messageType] =
+        (typeDurations[entry.messageType] || 0) + entry.durationMs;
       minDurationMs = Math.min(minDurationMs, entry.durationMs);
       maxDurationMs = Math.max(maxDurationMs, entry.durationMs);
       allDurations.push(entry.durationMs);
@@ -177,7 +189,10 @@ export class PostalService {
     const avgDurationMs = totalDurationMs / numMessages;
 
     allDurations.sort((a, b) => a - b);
-    const p95Index = Math.min(Math.ceil(numMessages * 0.95) - 1, numMessages - 1);
+    const p95Index = Math.min(
+      Math.ceil(numMessages * 0.95) - 1,
+      numMessages - 1,
+    );
     const p95DurationMs = allDurations[p95Index];
 
     let mostFrequentMessageType = "N/A";
@@ -210,7 +225,9 @@ export class PostalService {
       mostFrequentMessageType,
       mostFrequentMessageCount,
       mostTimeConsumingMessageType,
-      totalTimeForMostConsumingTypeMs: parseFloat(totalTimeForMostConsumingTypeMs.toFixed(3)),
+      totalTimeForMostConsumingTypeMs: parseFloat(
+        totalTimeForMostConsumingTypeMs.toFixed(3),
+      ),
     });
 
     PostalService.lastPerfSummaryTime = now;
@@ -229,36 +246,46 @@ export class PostalService {
     try {
       this.signalingClient.connect();
     } catch (error) {
-      LogChannel.log("postalservice", "Failed to connect to signaling server:", error);
+      LogChannel.log(
+        "postalservice",
+        "Failed to connect to signaling server:",
+        error,
+      );
     }
   }
-
 
   //#endregion
 
   //#region postalservice core
 
   public functions: GenericActorFunctions = {
-
-    CREATE: async (payload: custompayload ) => {
-
+    CREATE: async (payload: custompayload) => {
       const id = await this.add(payload.actorname, payload.base);
-      LogChannel.log("postalserviceCreate", "created actor id: ", id, "sending back to creator")
-      return id
+      LogChannel.log(
+        "postalserviceCreate",
+        "created actor id: ",
+        id,
+        "sending back to creator",
+      );
+      return id;
     },
-    INSPECT: (_payload: null): ActorInspectInfo[] => inspectActors(PostalService.actors),
+    INSPECT: (_payload: null): ActorInspectInfo[] =>
+      inspectActors(PostalService.actors),
     RELOAD: async (payload: ReloadPayload): Promise<ActorInspectInfo> => {
       return await this.reload(payload.actorId);
     },
     REBOOT: async (payload: RebootPayload | null): Promise<RootActorConfig> => {
       return await this.reboot(payload ?? null);
     },
-    LOADED: (payload: { actorId: ActorId, callbackKey: string }) => {
-      LogChannel.log("postalservice", "new actor loaded, id: ", payload.actorId);
+    LOADED: (payload: { actorId: ActorId; callbackKey: string }) => {
+      LogChannel.log(
+        "postalservice",
+        "new actor loaded, id: ",
+        payload.actorId,
+      );
 
       for (const [key, signal] of this.callbackMap.entries()) {
         if (key.toString() === payload.callbackKey) {
-
           signal.trigger(payload.actorId);
           return;
         }
@@ -295,18 +322,26 @@ export class PostalService {
           registrySet.add(actorId);
           if (PostalService.debugMode) {
             // When in debug, skip local discovery to test signaling only
-            LogChannel.debug("postalservice", `skipping local discovery for topic ${topic}`);
-            LogChannel.debug("postalservice", `force creating local proxy for ${actorId}`);
-            const node = await this.getActorRemoteInfo(actorId)
-            this.createProxyActor(actorId, node.nodeId!, true)
+            LogChannel.debug(
+              "postalservice",
+              `skipping local discovery for topic ${topic}`,
+            );
+            LogChannel.debug(
+              "postalservice",
+              `force creating local proxy for ${actorId}`,
+            );
+            const node = await this.getActorRemoteInfo(actorId);
+            this.createProxyActor(actorId, node.nodeId!, true);
           }
           if (this.signalingClient) {
             const info = await this.getActorRemoteInfo(actorId);
-            if (!info.nodeId) throw new Error("Cannot subscribe to topic: nodeId unknown");
+            if (!info.nodeId) {
+              throw new Error("Cannot subscribe to topic: nodeId unknown");
+            }
             this.signalingRegister(actorId, topic, info.nodeId);
           }
         } else {
-          console.log("topics not aware of actor")
+          console.log("topics not aware of actor");
         }
       }
 
@@ -317,15 +352,23 @@ export class PostalService {
         this.doTopicUpdate(topicSet, actorId, delmode);
       }
     },
-    ADDREMOTE: (payload: { actorId: ActorId; topic: TopicName; nodeId: string }) => {
-      console.log("ADDREMOTE")
+    ADDREMOTE: (
+      payload: { actorId: ActorId; topic: TopicName; nodeId: string },
+    ) => {
+      console.log("ADDREMOTE");
       const { actorId, topic, nodeId } = payload;
       if (!PostalService.actors.has(actorId)) {
-        LogChannel.log("postalservice", `addremote: Creating proxy for remote actor ${actorId} @ ${nodeId}`);
+        LogChannel.log(
+          "postalservice",
+          `addremote: Creating proxy for remote actor ${actorId} @ ${nodeId}`,
+        );
         this.createProxyActor(actorId, nodeId, false);
         PostalService.topicRegistry.get(topic)?.add(actorId);
       } else {
-        LogChannel.log("postalservice", "addremote: remote actor already exists");
+        LogChannel.log(
+          "postalservice",
+          "addremote: remote actor already exists",
+        );
       }
       return true;
     },
@@ -338,36 +381,57 @@ export class PostalService {
   ): void {
     const actor = PostalService.actors.get(actorId);
     if (!actor?.actorname) {
-      throw new Error(`Cannot set root actor without local creation metadata: ${actorId}`);
+      throw new Error(
+        `Cannot set root actor without local creation metadata: ${actorId}`,
+      );
     }
-    PostalService.rootActor = { actorId, actorname: actor.actorname, base: actor.base, startType, startPayload };
+    PostalService.rootActor = {
+      actorId,
+      actorname: actor.actorname,
+      base: actor.base,
+      startType,
+      startPayload,
+    };
   }
 
   getRootActorId(): ActorId | null {
     return PostalService.rootActor?.actorId ?? null;
   }
 
-  async add(address: string, base?: string | URL, actorId?: ActorId): Promise<ActorId> {
+  async add(
+    address: string,
+    base?: string | URL,
+    actorId?: ActorId,
+  ): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
 
     let workerUrl: string;
-    if (typeof Deno !== 'undefined') {
+    if (typeof Deno !== "undefined") {
       workerUrl = new URL(address, base ?? `file://${Deno.cwd()}/`).href;
     } else {
-      const baseUrl = globalThis.location.href.substring(0, globalThis.location.href.lastIndexOf('/') + 1);
+      const baseUrl = globalThis.location.href.substring(
+        0,
+        globalThis.location.href.lastIndexOf("/") + 1,
+      );
       workerUrl = new URL(address, baseUrl).href;
     }
 
-    const worker = new PostalService.WorkerClass(workerUrl, { name: address, type: "module" });
-    worker.onmessage = (event: MessageEvent<Message>) => this.OnMessage(event.data);
+    const worker = new PostalService.WorkerClass(workerUrl, {
+      name: address,
+      type: "module",
+    });
+    worker.onmessage = (event: MessageEvent<Message>) =>
+      this.OnMessage(event.data);
     worker.onerror = (event) => PostalService.onActorWorkerError?.(event);
     worker.onmessageerror = () =>
       PostalService.onActorWorkerError?.(
-        new ErrorEvent("messageerror", { message: "Actor worker message error" }),
+        new ErrorEvent("messageerror", {
+          message: "Actor worker message error",
+        }),
       );
 
-    const callbackKey = Symbol('actor-creation');
+    const callbackKey = Symbol("actor-creation");
     const actorSignal = new Signal<ActorId>();
     this.callbackMap.set(callbackKey, actorSignal);
 
@@ -378,7 +442,11 @@ export class PostalService {
     worker.postMessage({
       address: { fm: System, to: "WORKER" },
       type: "INIT",
-      payload: { callbackKey: callbackKey.toString(), originalPayload: null, actorId },
+      payload: {
+        callbackKey: callbackKey.toString(),
+        originalPayload: null,
+        actorId,
+      },
     });
 
     let id: ActorId;
@@ -387,7 +455,12 @@ export class PostalService {
         actorSignal.wait(),
         new Promise<never>((_, reject) => {
           setTimeout(
-            () => reject(new Error(`Timed out creating actor ${address} after ${ACTOR_CREATION_TIMEOUT_MS}ms`)),
+            () =>
+              reject(
+                new Error(
+                  `Timed out creating actor ${address} after ${ACTOR_CREATION_TIMEOUT_MS}ms`,
+                ),
+              ),
             ACTOR_CREATION_TIMEOUT_MS,
           );
         }),
@@ -414,28 +487,39 @@ export class PostalService {
   async reload(actorId: ActorId): Promise<ActorInspectInfo> {
     const oldActor = PostalService.actors.get(actorId);
     if (!oldActor?.actorname) {
-      throw new Error(`Cannot reload actor without local creation metadata: ${actorId}`);
+      throw new Error(
+        `Cannot reload actor without local creation metadata: ${actorId}`,
+      );
     }
     const snapshot = await snapshotActor(this.lifecyclePost, actorId);
     await shutdownActor(this.lifecyclePost, actorId, "reload");
     PostalService.actors.delete(actorId);
-    oldActor.worker.terminate();
-    const loadedActorId = await this.add(oldActor.actorname, oldActor.base, actorId);
+    const loadedActorId = await this.add(
+      oldActor.actorname,
+      oldActor.base,
+      actorId,
+    );
     if (loadedActorId !== actorId) {
-      throw new Error(`Reloaded actor returned unexpected id ${loadedActorId}; expected ${actorId}`);
+      throw new Error(
+        `Reloaded actor returned unexpected id ${loadedActorId}; expected ${actorId}`,
+      );
     }
     const nextActor = PostalService.actors.get(actorId)!;
     nextActor.createdAt = oldActor.createdAt;
     nextActor.reloadedAt = Date.now();
     nextActor.reloadCount = (oldActor.reloadCount ?? 0) + 1;
     await restoreActor(this.lifecyclePost, actorId, snapshot);
-    return inspectActors(PostalService.actors).find((actor) => actor.actorId === actorId)!;
+    return inspectActors(PostalService.actors).find((actor) =>
+      actor.actorId === actorId
+    )!;
   }
 
   async reboot(payload: RebootPayload | null): Promise<RootActorConfig> {
     if (PostalService.rebootInProgress) {
       if (PostalService.rootActor) return PostalService.rootActor;
-      throw new Error("Cannot reboot: reboot already in progress and no root actor is registered");
+      throw new Error(
+        "Cannot reboot: reboot already in progress and no root actor is registered",
+      );
     }
     PostalService.rebootInProgress = true;
     try {
@@ -460,7 +544,6 @@ export class PostalService {
     const actor = PostalService.actors.get(address);
     if (actor) {
       await shutdownActor(this.lifecyclePost, address, "murder");
-      actor.worker.terminate();
       PostalService.actors.delete(address);
     }
   }
@@ -470,22 +553,31 @@ export class PostalService {
     cb?: boolean,
   ): unknown => this.PostMessage(message as never, cb as never);
 
-  OnMessage = async (message: Message): Promise<void> => { 
-    const messageStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
+  OnMessage = async (message: Message): Promise<void> => {
+    const messageStartTime = PostalService._isPerfLoggingPhysicallyOn
+      ? performance.now()
+      : 0;
     let isSystemMessage = false;
     let isRelay = false;
     let processingTimeMs = 0;
 
     // Store original sender for logging before it's potentially modified by runFunctions
-    const originalSender = message.address.fm; 
+    const originalSender = message.address.fm;
     PostalService.lastSender = originalSender; // Keep this for TOPICUPDATE logic
 
-    LogChannel.log("postalserviceOnMessage", "postalService handleMessage", message);
-    const addresses = Array.isArray(message.address.to) ? message.address.to : [message.address.to];
+    LogChannel.log(
+      "postalserviceOnMessage",
+      "postalService handleMessage",
+      message,
+    );
+    const addresses = Array.isArray(message.address.to)
+      ? message.address.to
+      : [message.address.to];
 
     const rawTransfer = (message as Record<string, unknown>).transfer;
     if (
-      addresses.length > 1 && Array.isArray(rawTransfer) && rawTransfer.length > 0
+      addresses.length > 1 && Array.isArray(rawTransfer) &&
+      rawTransfer.length > 0
     ) {
       throw new Error(
         "PostalService relay: transfer is not supported when addressing multiple actors",
@@ -493,31 +585,44 @@ export class PostalService {
     }
 
     for (const address of addresses) {
-      const singleMessageStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
+      const singleMessageStartTime = PostalService._isPerfLoggingPhysicallyOn
+        ? performance.now()
+        : 0;
       // Create a shallow copy for modification to avoid altering the original message object for subsequent loops/logs
-      const currentMessage = { ...message, address: { ...message.address, to: address } };
+      const currentMessage = {
+        ...message,
+        address: { ...message.address, to: address },
+      };
 
       if (currentMessage.address.to === System) {
         isSystemMessage = true;
-        await runFunctions(currentMessage, this.functions, this); 
+        await runFunctions(currentMessage, this.functions, this);
       } else {
         isRelay = true;
-        const actor = PostalService.actors.get(currentMessage.address.to as ActorId);
+        const actor = PostalService.actors.get(
+          currentMessage.address.to as ActorId,
+        );
         if (actor) {
           const cloneMessage = resolveActorRefsForClone(currentMessage);
-          const transfer = popTransferForPost(cloneMessage as Record<string, unknown>);
+          const transfer = popTransferForPost(
+            cloneMessage as Record<string, unknown>,
+          );
           actor.worker.postMessage(cloneMessage, transfer ?? []);
         } else {
-          LogChannel.log("postalservice", "Error: Actor not found for message relay:", currentMessage.address.to);
+          LogChannel.log(
+            "postalservice",
+            "Error: Actor not found for message relay:",
+            currentMessage.address.to,
+          );
         }
       }
 
       if (PostalService._isPerfLoggingPhysicallyOn) {
         const singleMessageEndTime = performance.now();
         processingTimeMs = singleMessageEndTime - singleMessageStartTime;
-        
+
         if (PostalService.messageTimings.length >= PostalService.MAX_TIMINGS) {
-          PostalService.messageTimings.shift(); 
+          PostalService.messageTimings.shift();
         }
         const perfEntry: PerfData = {
           type: "MessageProcessed",
@@ -527,7 +632,7 @@ export class PostalService {
           durationMs: parseFloat(processingTimeMs.toFixed(3)),
           timestamp: Date.now(),
           system: isSystemMessage,
-          relay: isRelay
+          relay: isRelay,
         };
         PostalService.messageTimings.push(perfEntry);
         PostalService.currentPeriodPerfData.push(perfEntry);
@@ -536,85 +641,101 @@ export class PostalService {
         }
       }
     }
-  }
+  };
 
   PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
-    PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb?: false | undefined): void;
-    // Implementation
-    PostMessage<
-      T extends Record<string, (payload: any) => any>
-    >(message: MessageFrom<T>, cb?: boolean): any {
-      const perfLogStartTime = PostalService._isPerfLoggingPhysicallyOn ? performance.now() : 0;
-      const actualTarget = Array.isArray(message.target)
-        ? message.target.map((target) => resolveActorId(target))
-        : resolveActorId(message.target); // or however target is determined
-      const actor = PostalService.actors.get(actualTarget as ActorId);
+    T extends Record<string, (payload: any) => any>,
+  >(message: MessageFrom<T>, cb: true): Promise<ReturnFrom<T, typeof message>>;
+  PostMessage<
+    T extends Record<string, (payload: any) => any>,
+  >(message: MessageFrom<T>, cb?: false | undefined): void;
+  // Implementation
+  PostMessage<
+    T extends Record<string, (payload: any) => any>,
+  >(message: MessageFrom<T>, cb?: boolean): any {
+    const perfLogStartTime = PostalService._isPerfLoggingPhysicallyOn
+      ? performance.now()
+      : 0;
+    const actualTarget = Array.isArray(message.target)
+      ? message.target.map((target) => resolveActorId(target))
+      : resolveActorId(message.target); // or however target is determined
+    const actor = PostalService.actors.get(actualTarget as ActorId);
 
-      if (actor) {
-        if (cb && typeof PostMessage === 'function') { 
-           const result = PostMessage(message as any, true, this); 
-           if (PostalService._isPerfLoggingPhysicallyOn) {
-              const perfLogEndTime = performance.now();
-              const duration = parseFloat((perfLogEndTime - perfLogStartTime).toFixed(3));
-              const perfEntry: PerfData = {
-                type: "PostalServiceSyncSend",
-                messageType: String(message.type).split(":")[0],
-                from: (message as MessageFrom<T> & { address?: { fm: string } }).address?.fm
-                  ?? perfRouteString(message.target),
-                to: perfRouteString(actualTarget as string | string[]),
-                durationMs: duration,
-                timestamp: Date.now(),
-              };
-              PostalService.messageTimings.push(perfEntry);
-              if (PostalService.messageTimings.length > PostalService.MAX_TIMINGS) {
-                PostalService.messageTimings.shift(); 
-              }
-              PostalService.currentPeriodPerfData.push(perfEntry);
-              if (duration > PostalService.perfLogConsoleThresholdMs) {
-                LogChannel.log("postalperf", perfEntry);
-              }
-           }
-           return result;
-        } else {
-          const cloneMessage = resolveActorRefsForClone(message);
-          const transfer = popTransferForPost(cloneMessage as Record<string, unknown>);
-          actor.worker.postMessage(cloneMessage, transfer ?? []);
-          if (PostalService._isPerfLoggingPhysicallyOn) {
-              const perfLogEndTime = performance.now();
-              const duration = parseFloat((perfLogEndTime - perfLogStartTime).toFixed(3));
-              const perfEntry: PerfData = {
-                type: "PostalServiceAsyncSend",
-                messageType: String(message.type).split(":")[0],
-                from: perfRouteString(message.target),
-                to: perfRouteString(actualTarget as string | string[]),
-                durationMs: duration,
-                timestamp: Date.now(),
-              };
-              PostalService.messageTimings.push(perfEntry);
-              if (PostalService.messageTimings.length > PostalService.MAX_TIMINGS) {
-                PostalService.messageTimings.shift();
-              }
-              PostalService.currentPeriodPerfData.push(perfEntry);
-              if (duration > PostalService.perfLogConsoleThresholdMs) {
-                LogChannel.log("postalperf", perfEntry);
-              }
+    if (actor) {
+      if (cb && typeof PostMessage === "function") {
+        const result = PostMessage(message as any, true, this);
+        if (PostalService._isPerfLoggingPhysicallyOn) {
+          const perfLogEndTime = performance.now();
+          const duration = parseFloat(
+            (perfLogEndTime - perfLogStartTime).toFixed(3),
+          );
+          const perfEntry: PerfData = {
+            type: "PostalServiceSyncSend",
+            messageType: String(message.type).split(":")[0],
+            from:
+              (message as MessageFrom<T> & { address?: { fm: string } }).address
+                ?.fm ??
+                perfRouteString(message.target),
+            to: perfRouteString(actualTarget as string | string[]),
+            durationMs: duration,
+            timestamp: Date.now(),
+          };
+          PostalService.messageTimings.push(perfEntry);
+          if (PostalService.messageTimings.length > PostalService.MAX_TIMINGS) {
+            PostalService.messageTimings.shift();
+          }
+          PostalService.currentPeriodPerfData.push(perfEntry);
+          if (duration > PostalService.perfLogConsoleThresholdMs) {
+            LogChannel.log("postalperf", perfEntry);
           }
         }
+        return result;
       } else {
-        LogChannel.log("postalservice", "Error: Actor not found for PostalService.PostMessage:", actualTarget);
-        if (cb) return Promise.reject(new Error(`Actor not found: ${actualTarget}`)); 
+        const cloneMessage = resolveActorRefsForClone(message);
+        const transfer = popTransferForPost(
+          cloneMessage as Record<string, unknown>,
+        );
+        actor.worker.postMessage(cloneMessage, transfer ?? []);
+        if (PostalService._isPerfLoggingPhysicallyOn) {
+          const perfLogEndTime = performance.now();
+          const duration = parseFloat(
+            (perfLogEndTime - perfLogStartTime).toFixed(3),
+          );
+          const perfEntry: PerfData = {
+            type: "PostalServiceAsyncSend",
+            messageType: String(message.type).split(":")[0],
+            from: perfRouteString(message.target),
+            to: perfRouteString(actualTarget as string | string[]),
+            durationMs: duration,
+            timestamp: Date.now(),
+          };
+          PostalService.messageTimings.push(perfEntry);
+          if (PostalService.messageTimings.length > PostalService.MAX_TIMINGS) {
+            PostalService.messageTimings.shift();
+          }
+          PostalService.currentPeriodPerfData.push(perfEntry);
+          if (duration > PostalService.perfLogConsoleThresholdMs) {
+            LogChannel.log("postalperf", perfEntry);
+          }
+        }
+      }
+    } else {
+      LogChannel.log(
+        "postalservice",
+        "Error: Actor not found for PostalService.PostMessage:",
+        actualTarget,
+      );
+      if (cb) {
+        return Promise.reject(new Error(`Actor not found: ${actualTarget}`));
       }
     }
+  }
 
   //#endregion
   private doTopicUpdate(
     topicSet: Set<ActorId>,
     updater: ActorId,
-    delmode: boolean
+    delmode: boolean,
   ) {
     if (PostalService.debugMode) {
       return;
@@ -628,7 +749,7 @@ export class PostalService {
   }
 
   private async getActorRemoteInfo(
-    actorId: ActorId
+    actorId: ActorId,
   ): Promise<{ isRemote: boolean; nodeId?: string }> {
     const actor = PostalService.actors.get(actorId);
     if (!actor) return { isRemote: false };
@@ -636,13 +757,13 @@ export class PostalService {
     let isRemote = false;
     try {
       isRemote = (actor.worker as any).isRemote === true ||
-        (actor.worker as any).constructor.name === 'IrohWebWorker';
+        (actor.worker as any).constructor.name === "IrohWebWorker";
     } catch {
       isRemote = false;
     }
 
     let nodeId: string | undefined;
-    if (typeof (actor.worker as any).getIrohAddr === 'function') {
+    if (typeof (actor.worker as any).getIrohAddr === "function") {
       try {
         const addr = await (actor.worker as any).getIrohAddr();
         nodeId = addr.nodeId;
@@ -657,40 +778,46 @@ export class PostalService {
   private signalingRegister(
     localActorId: ActorId,
     topic: TopicName,
-    nodeId: string
+    nodeId: string,
   ) {
     if (!this.signalingClient) return;
     this.signalingClient.joinTopic(localActorId, topic, nodeId);
 
     this.signalingClient.onJoinTopic(topic, (remoteActorId, remoteNodeId) => {
-      if (!remoteNodeId) throw new Error("signaling msg didnt have nodeid, idk")
+      if (!remoteNodeId) {
+        throw new Error("signaling msg didnt have nodeid, idk");
+      }
       if (remoteNodeId && !PostalService.actors.has(remoteActorId)) {
         LogChannel.log(
           "postalservice",
-          `signaling: Creating proxy for remote actor ${remoteActorId}`
+          `signaling: Creating proxy for remote actor ${remoteActorId}`,
         );
         this.createProxyActor(remoteActorId, remoteNodeId, false);
         PostalService.topicRegistry.get(topic)?.add(remoteActorId);
       }
-      PostalService.topicRegistry.get(topic)?.forEach( async (localActorId) => {
+      PostalService.topicRegistry.get(topic)?.forEach(async (localActorId) => {
         if (localActorId === remoteActorId) return;
         this.PostMessage<typeof defaultActorApi>({
-          target: localActorId, type: "ADDCONTACTNODE",
+          target: localActorId,
+          type: "ADDCONTACTNODE",
           payload: {
             actorId: remoteActorId,
             topic: topic,
-            nodeid: remoteNodeId
-          }
+            nodeid: remoteNodeId,
+          },
         });
-        const localnodeid = await this.getActorRemoteInfo(localActorId)
-        if (!localnodeid.isRemote) throw new Error("this actor should have an irohnode but doesn't")
+        const localnodeid = await this.getActorRemoteInfo(localActorId);
+        if (!localnodeid.isRemote) {
+          throw new Error("this actor should have an irohnode but doesn't");
+        }
         this.PostMessage<typeof defaultActorApi>({
-          target: remoteActorId, type: "ADDCONTACTNODE",
+          target: remoteActorId,
+          type: "ADDCONTACTNODE",
           payload: {
             actorId: localActorId,
             topic: topic,
-            nodeid: localnodeid.nodeId!
-          }
+            nodeid: localnodeid.nodeId!,
+          },
         });
       });
     });
@@ -702,7 +829,7 @@ export class PostalService {
   private createProxyActor(
     actorId: ActorId,
     nodeId: string,
-    local: boolean
+    local: boolean,
   ) {
     if (local) {
       const actor = PostalService.actors.get(actorId);
