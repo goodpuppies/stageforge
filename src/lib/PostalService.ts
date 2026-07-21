@@ -31,7 +31,13 @@ export type WorkerConstructor = new (
   scriptURL: string | URL,
   options?: WorkerOptions,
 ) => Worker;
-const ACTOR_CREATION_TIMEOUT_MS = 15_000;
+const ACTOR_CREATION_TIMEOUT_MS = (() => {
+  const configured = Number(Deno.env.get("PETPLAY_ACTOR_CREATION_TIMEOUT_MS"));
+  if (Number.isFinite(configured) && configured >= 1_000) return configured;
+  // Native Deno workers can spend well over 15 seconds evaluating the initial
+  // dependency graph on a cold Linux cache or a busy development machine.
+  return 60_000;
+})();
 interface custompayload {
   actorname: string;
   base?: string | URL;
