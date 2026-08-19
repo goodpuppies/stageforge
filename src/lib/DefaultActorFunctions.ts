@@ -40,6 +40,49 @@ function internalPostMan() {
   };
 }
 
+const AsyncFunction = Object.getPrototypeOf(async function () {})
+  .constructor as new (
+    ...args: string[]
+  ) => (...values: unknown[]) => Promise<unknown>;
+
+/**
+ * Evaluate `code` inside an actor with its own `state` in scope.
+ *
+ * Actors may override `EVALJS` to widen the scope with their own locals; actor
+ * functions win over these defaults. Errors are returned rather than thrown so
+ * that a bad expression from the agent REPL cannot take the worker down.
+ */
+async function evaluateActorJs(code: string, state: unknown) {
+  const names = ["state", "PostMan", "globalThis"];
+  const values = [state, PostMan, globalThis];
+  try {
+    let evaluator: (...values: unknown[]) => Promise<unknown>;
+    try {
+      // Prefer expression form so `state.foo` returns a value without `return`.
+      evaluator = new AsyncFunction(...names, `"use strict"; return (${code}\n);`);
+    } catch {
+      evaluator = new AsyncFunction(...names, `"use strict"; ${code}`);
+    }
+    const result = await evaluator(...values);
+    return {
+      ok: true,
+      type: result === null ? "null" : typeof result,
+      inspected: Deno.inspect(result, {
+        depth: 8,
+        iterableLimit: 200,
+        strAbbreviateSize: 20_000,
+        getters: false,
+        colors: false,
+      }),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+    };
+  }
+}
+
 export const functions = {
   //initialize actor
   INIT: (
@@ -71,6 +114,14 @@ export const functions = {
       `initialized ${InternalPostMan.state.id} actor with args:`,
       payload?.originalPayload || null,
     );
+  },
+  EVALJS: async (payload: { code?: string } | null) => {
+    const InternalPostMan = internalPostMan();
+    const code = payload?.code;
+    if (typeof code !== "string" || code.trim().length === 0) {
+      return { ok: false, error: "EVALJS requires a non-empty `code` string" };
+    }
+    return await evaluateActorJs(code, InternalPostMan.state);
   },
   SHUTDOWN: async (payload: unknown) => {
     const InternalPostMan = internalPostMan();

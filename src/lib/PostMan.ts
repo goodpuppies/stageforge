@@ -85,8 +85,52 @@ export class PostMan {
 
     // Set up message handler
     PostMan.worker.onmessage = (event: MessageEvent) => {
-      runFunctions(event.data, PostMan.functions, PostMan);
+      // runFunctions already reports dispatch failures to the caller; this is the
+      // last net so a rejection can never surface as an unhandled worker error.
+      void runFunctions(event.data, PostMan.functions, PostMan).catch(
+        (error: unknown) => {
+          console.error(
+            `[stageforge] unhandled dispatch error in ${actorState.name}:`,
+            error,
+          );
+        },
+      );
     };
+
+    PostMan.installWorkerErrorGuards(actorState.name);
+  }
+
+  /**
+   * Keep one bad async continuation from taking the process down.
+   *
+   * Actors host long-lived native resources (OpenVR, raylib, capture helpers),
+   * so a stray rejection anywhere in the worker used to kill every actor at
+   * once. Log loudly and keep running instead.
+   */
+  private static errorGuardsInstalled = false;
+  private static installWorkerErrorGuards(actorName: string): void {
+    if (PostMan.errorGuardsInstalled) return;
+    PostMan.errorGuardsInstalled = true;
+    const scope = globalThis as unknown as {
+      addEventListener?: (
+        type: string,
+        listener: (event: any) => void,
+      ) => void;
+    };
+    scope.addEventListener?.("unhandledrejection", (event: any) => {
+      event.preventDefault?.();
+      console.error(
+        `[stageforge] unhandled rejection in actor ${actorName}:`,
+        event?.reason,
+      );
+    });
+    scope.addEventListener?.("error", (event: any) => {
+      event.preventDefault?.();
+      console.error(
+        `[stageforge] uncaught error in actor ${actorName}:`,
+        event?.error ?? event?.message,
+      );
+    });
   }
 
   static async create<T extends GenericActorFunctions = GenericActorFunctions>(

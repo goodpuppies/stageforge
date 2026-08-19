@@ -12,6 +12,14 @@ import { LogChannel } from "@mommysgoodpuppy/logchannel";
 // Map to store callbacks by UUID
 const callbackMap = new Map<string, Signal<unknown>>();
 
+/** Shape `runFunctions` replies with when a handler throws or is missing. */
+type ActorDispatchError = {
+  message: string;
+  stack?: string;
+  type?: string;
+  event?: string;
+};
+
 export async function runFunctions(
   message: Message,
   functions: GenericActorFunctions,
@@ -34,25 +42,59 @@ export async function runFunctions(
     return;
   }
 
-  // Check if the function exists
-  if (!functions[baseType]) {
+  // Report a dispatch failure back to a waiting caller instead of letting it
+  // escape. An error thrown here surfaces as an unhandled rejection inside the
+  // actor's worker, which tears down the whole process over one bad message.
+  const failDispatch = (event: string, error: unknown, extra?: unknown) => {
+    const detail = error instanceof Error
+      ? { message: error.message, stack: error.stack }
+      : { message: String(error) };
     LogChannel.log("actorroute", {
-      event: "missing-function",
+      event,
       baseType,
       originalType: message.type,
       from: message.address.fm,
       to: message.address.to,
-      availableFunctions: Object.keys(functions),
+      error: detail.message,
+      ...(extra ?? {}),
     });
-    throw new Error(
-      `Function not found for message type: ${baseType} (original: ${message.type})`,
+    console.error(
+      `[stageforge] ${event} for "${baseType}" on ${message.address.to}: ${detail.message}`,
     );
+    if (callbackId) {
+      // Without this the caller waits out its whole timeout for a reply that
+      // can never arrive.
+      ctx.PostMessage({
+        target: message.address.fm,
+        type: `${baseType}:${callbackId}`,
+        payload: { __actorError: { ...detail, type: baseType, event } },
+      });
+    }
+  };
+
+  // Check if the function exists
+  if (!functions[baseType]) {
+    failDispatch(
+      "missing-function",
+      new Error(
+        `Function not found for message type: ${baseType} (original: ${message.type})`,
+      ),
+      { availableFunctions: Object.keys(functions) },
+    );
+    return;
   }
   const originalType = message.type;
   message.type = baseType;
 
   // Execute
-  const ret = await functions[baseType]?.(message.payload);
+  let ret: unknown;
+  try {
+    ret = await functions[baseType]?.(message.payload);
+  } catch (error) {
+    message.type = originalType;
+    failDispatch("handler-failed", error);
+    return;
+  }
 
   // `cb: true` adds a callback id to the message type. Only those messages
   // should receive returned values; fire-and-forget sends must ignore returns.
@@ -60,11 +102,18 @@ export async function runFunctions(
     // Use the same format for response: baseType:callbackId
     const responseType = `${baseType}:${callbackId}`;
 
-    ctx.PostMessage({
-      target: message.address.fm,
-      type: responseType,
-      payload: ret,
-    });
+    try {
+      ctx.PostMessage({
+        target: message.address.fm,
+        type: responseType,
+        payload: ret,
+      });
+    } catch (error) {
+      // A non-cloneable return value must not kill the actor either.
+      message.type = originalType;
+      failDispatch("response-post-failed", error);
+      return;
+    }
   }
 
   // Restore the original message type
@@ -150,7 +199,20 @@ export async function PostMessage(
       to: message.address.to,
     });
     try {
-      return await messageCallback.wait();
+      const response = await messageCallback.wait();
+      // A dispatch failure travels back as data so the actor's worker survives,
+      // but an awaiting caller must still see it as a failure — otherwise the
+      // error object flows onward as if it were a real return value.
+      const failure = (response as { __actorError?: ActorDispatchError } | null)
+        ?.__actorError;
+      if (failure != null) {
+        const error = new Error(
+          `${message.address.to} failed handling "${failure.type ?? "message"}": ${failure.message}`,
+        );
+        if (failure.stack) error.stack = failure.stack;
+        throw error;
+      }
+      return response;
     } finally {
       callbackMap.delete(callbackId);
     }

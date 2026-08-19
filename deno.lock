@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@mommysgoodpuppy/logchannel@0.1": "0.1.0"
+  },
+  "jsr": {
+    "@mommysgoodpuppy/logchannel@0.1.0": {
+      "integrity": "4001c4ece26bb332d511c6a3e3b0383d4f39d476d375b0dda32a6e42a9259c67"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@mommysgoodpuppy/logchannel@0.1"
+    ]
+  }
+}
