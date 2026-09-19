@@ -169,6 +169,27 @@ const state = actorState({
 });
 ```
 
+### Per-actor worker backends
+
+Worker-compatible backends can be registered on the coordinator and selected
+by a serializable key when an actor creates another actor:
+
+```ts
+import { IPCWorker, PostalService, PostMan } from "jsr:@goodpuppies/stageforge";
+
+const postalService = new PostalService();
+postalService.registerWorker("process", IPCWorker);
+
+const processActor = await PostMan.create("./gpu-actor.ts", import.meta.url, {
+  worker: "process",
+});
+```
+
+`IPCWorker` runs the actor in a separate Deno process. Its default transport is
+the standalone `WebSocketWorker` protocol over a private loopback connection;
+another IPC transport can be supplied with `transportFactory`. Transfer lists
+are not supported by the WebSocket transport.
+
 ## License
 
 MIT

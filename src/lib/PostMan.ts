@@ -1,4 +1,5 @@
 import {
+  type ActorCreateOptions,
   type ActorId,
   ActorIdValue,
   type ActorRef,
@@ -136,18 +137,19 @@ export class PostMan {
   static async create<T extends GenericActorFunctions = GenericActorFunctions>(
     actorname: tsfile | URL,
     base?: tsfile | URL,
+    options?: ActorCreateOptions,
   ): Promise<ActorRef<T>> {
     //console.log("create", actorname)
     interface payload {
       actorname: tsfile | URL;
       base?: tsfile | URL;
+      worker?: string;
     }
-    let payload: payload;
-    if (base) {
-      payload = { actorname, base };
-    } else {
-      payload = { actorname };
-    }
+    const payload: payload = {
+      actorname,
+      ...(base ? { base } : {}),
+      ...(options?.worker ? { worker: options.worker } : {}),
+    };
     const result = await PostMan.PostMessage({
       target: System,
       type: "CREATE",
@@ -158,6 +160,7 @@ export class PostMan {
       requester: PostMan.state.id,
       actorname,
       base,
+      worker: options?.worker,
       result,
     });
 

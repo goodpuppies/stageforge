@@ -9,6 +9,7 @@ import {
   type ReturnFrom,
   System,
   type TopicName,
+  type WorkerKind,
 } from "./types.ts";
 import { PostMessage, runFunctions } from "./shared.ts";
 import { popTransferForPost, resolveActorRefsForClone } from "./utils.ts";
@@ -41,6 +42,7 @@ const ACTOR_CREATION_TIMEOUT_MS = (() => {
 interface custompayload {
   actorname: string;
   base?: string | URL;
+  worker?: WorkerKind;
 }
 
 interface ReloadPayload {
@@ -70,6 +72,7 @@ export class PostalService {
   private static topicRegistry: Map<TopicName, Set<ActorId>> = new Map();
   private callbackMap: Map<symbol, Signal<any>> = new Map();
   private static WorkerClass: WorkerConstructor = Worker;
+  private readonly workerRegistry = new Map<WorkerKind, WorkerConstructor>();
   private signalingClient: SignalingClient | null = null;
   private static mainInstance: PostalService | null = null;
   private static rootActor: RootActorConfig | null = null;
@@ -136,6 +139,24 @@ export class PostalService {
       PostalService.WorkerClass = customWorkerClass;
       LogChannel.log("postalservice", "Using custom Worker implementation");
     }
+  }
+
+  /** Register an explicitly selectable worker backend for actor creation. */
+  registerWorker(kind: WorkerKind, workerClass: WorkerConstructor): this {
+    if (kind.trim().length === 0) {
+      throw new Error("Worker kind must not be empty");
+    }
+    this.workerRegistry.set(kind, workerClass);
+    return this;
+  }
+
+  private resolveWorkerClass(kind?: WorkerKind): WorkerConstructor {
+    if (kind == null) return PostalService.WorkerClass;
+    const workerClass = this.workerRegistry.get(kind);
+    if (!workerClass) {
+      throw new Error(`Unknown worker kind: ${kind}`);
+    }
+    return workerClass;
   }
 
   // Method to get and clear performance stats
@@ -266,7 +287,12 @@ export class PostalService {
 
   public functions: GenericActorFunctions = {
     CREATE: async (payload: custompayload) => {
-      const id = await this.add(payload.actorname, payload.base);
+      const id = await this.add(
+        payload.actorname,
+        payload.base,
+        undefined,
+        payload.worker,
+      );
       LogChannel.log(
         "postalserviceCreate",
         "created actor id: ",
@@ -395,6 +421,7 @@ export class PostalService {
       actorId,
       actorname: actor.actorname,
       base: actor.base,
+      workerKind: actor.workerKind,
       startType,
       startPayload,
     };
@@ -408,6 +435,7 @@ export class PostalService {
     address: string,
     base?: string | URL,
     actorId?: ActorId,
+    workerKind?: WorkerKind,
   ): Promise<ActorId> {
     LogChannel.log("postalserviceCreate", "creating", address);
     // Resolve relative to Deno.cwd()
@@ -423,7 +451,8 @@ export class PostalService {
       workerUrl = new URL(address, baseUrl).href;
     }
 
-    const worker = new PostalService.WorkerClass(workerUrl, {
+    const WorkerImpl = this.resolveWorkerClass(workerKind);
+    const worker = new WorkerImpl(workerUrl, {
       name: address,
       type: "module",
     });
@@ -481,6 +510,7 @@ export class PostalService {
     LogChannel.log("postalserviceCreate", "created", id);
     PostalService.actors.set(id, {
       worker,
+      workerKind,
       actorname: address,
       base,
       workerUrl,
@@ -499,11 +529,13 @@ export class PostalService {
     }
     const snapshot = await snapshotActor(this.lifecyclePost, actorId);
     await shutdownActor(this.lifecyclePost, actorId, "reload");
+    oldActor.worker.terminate();
     PostalService.actors.delete(actorId);
     const loadedActorId = await this.add(
       oldActor.actorname,
       oldActor.base,
       actorId,
+      oldActor.workerKind,
     );
     if (loadedActorId !== actorId) {
       throw new Error(
@@ -534,7 +566,8 @@ export class PostalService {
         rootActor: PostalService.rootActor,
         payload,
         post: this.lifecyclePost,
-        add: this.add.bind(this),
+        add: (actorname, base, workerKind) =>
+          this.add(actorname, base, undefined, workerKind),
         clearTopics: () => PostalService.topicRegistry.clear(),
         clearCallbacks: () => this.callbackMap.clear(),
         setRootActor: (config) => {
@@ -550,6 +583,7 @@ export class PostalService {
     const actor = PostalService.actors.get(address);
     if (actor) {
       await shutdownActor(this.lifecyclePost, address, "murder");
+      actor.worker.terminate();
       PostalService.actors.delete(address);
     }
   }

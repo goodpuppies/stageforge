@@ -110,6 +110,13 @@ type CallbackType<T extends string> = `CB:${T}`;
 // tsfile type
 export type tsfile = string;
 
+/** Serializable key selecting a worker implementation registered by PostalService. */
+export type WorkerKind = string;
+
+export type ActorCreateOptions = {
+  worker?: WorkerKind;
+};
+
 // BaseMessage interface
 export type BaseMessage<K extends MessageType> = {
   type: any | CallbackType<any>;
@@ -158,6 +165,7 @@ export type GenericActorFunctions = {
 // Actor interface to represent an actor in the system
 export interface ActorW {
   worker: Worker;
+  workerKind?: WorkerKind;
   actorname?: string;
   base?: string | URL;
   workerUrl?: string;

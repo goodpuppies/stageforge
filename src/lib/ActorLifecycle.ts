@@ -1,11 +1,12 @@
 import { LogChannel } from "@mommysgoodpuppy/logchannel";
-import type { ActorId, ActorW } from "./types.ts";
+import type { ActorId, ActorW, WorkerKind } from "./types.ts";
 
 export type ActorInspectInfo = {
   actorId: ActorId;
   actorname?: string;
   base?: string | URL;
   workerUrl?: string;
+  workerKind?: WorkerKind;
   createdAt?: number;
   reloadedAt?: number;
   reloadCount: number;
@@ -15,6 +16,7 @@ export type RootActorConfig = {
   actorId: ActorId;
   actorname: string;
   base?: string | URL;
+  workerKind?: WorkerKind;
   startType: string;
   startPayload: unknown;
 };
@@ -49,6 +51,7 @@ export function inspectActors(
     actorname: actor.actorname,
     base: actor.base,
     workerUrl: actor.workerUrl,
+    workerKind: actor.workerKind,
     createdAt: actor.createdAt,
     reloadedAt: actor.reloadedAt,
     reloadCount: actor.reloadCount ?? 0,
@@ -135,7 +138,11 @@ export async function rebootActorGraph(options: {
   rootActor: RootActorConfig | null;
   payload: RebootPayload | null;
   post: Post;
-  add: (actorname: string, base?: string | URL) => Promise<ActorId>;
+  add: (
+    actorname: string,
+    base?: string | URL,
+    workerKind?: WorkerKind,
+  ) => Promise<ActorId>;
   clearTopics: () => void;
   clearCallbacks: () => void;
   setRootActor: (config: RootActorConfig) => void;
@@ -152,6 +159,7 @@ export async function rebootActorGraph(options: {
       actorId: rootActorId,
       actorname: existing.actorname,
       base: existing.base,
+      workerKind: existing.workerKind,
       startType: payload?.startType ?? rootActor?.startType ?? "MAIN",
       startPayload: "startPayload" in (payload ?? {})
         ? payload?.startPayload
@@ -177,13 +185,18 @@ export async function rebootActorGraph(options: {
   // opposite order so native owners outlive all borrowed pointers and loops.
   for (const [actorId] of actorEntries.toReversed()) {
     await shutdownActor(options.post, actorId, "reboot");
+    actors.get(actorId)?.worker.terminate();
   }
   actors.clear();
   options.clearTopics();
   options.clearCallbacks();
   await new Promise((resolve) => setTimeout(resolve, REBOOT_RELEASE_WAIT_MS));
 
-  const newRoot = await options.add(rootConfig.actorname, rootConfig.base);
+  const newRoot = await options.add(
+    rootConfig.actorname,
+    rootConfig.base,
+    rootConfig.workerKind,
+  );
   const nextConfig = { ...rootConfig, actorId: newRoot };
   options.setRootActor(nextConfig);
   options.post({
