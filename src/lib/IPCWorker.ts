@@ -19,6 +19,43 @@ export interface IPCWorkerOptions extends WorkerOptions {
   transportFactory?: IPCWorkerTransportFactory;
 }
 
+/** Builds the argv that launches a child process running `scriptUrl` with `args`. */
+export type WorkerChildArgs = (scriptUrl: URL, args: readonly string[]) => string[];
+
+let workerChildArgs: WorkerChildArgs = defaultWorkerChildArgs;
+
+/**
+ * Installs how `{ worker: "process" }` children are launched.
+ *
+ * A checkout runs the host module through the Deno CLI. A compiled build has none — `deno compile`
+ * embeds `denort`, which ships no subcommands — so the binary has to be told how to dispatch
+ * itself; PetPlay passes its own launcher at boot.
+ */
+export function setWorkerChildArgs(launcher: WorkerChildArgs): void {
+  workerChildArgs = launcher;
+}
+
+function defaultWorkerChildArgs(
+  scriptUrl: URL,
+  args: readonly string[],
+): string[] {
+  if (Deno.build.standalone) {
+    throw new Error(
+      "IPCWorker has no child launcher in a compiled build; call setWorkerChildArgs first",
+    );
+  }
+  const commandArgs = ["run", "-A", "--unstable-webgpu", "--no-check"];
+  const configPath = `${Deno.cwd().replace(/\/$/, "")}/deno.json`;
+  try {
+    Deno.statSync(configPath);
+    commandArgs.push(`--config=${configPath}`);
+  } catch {
+    // Deno can resolve the child without an explicit project config.
+  }
+  commandArgs.push(scriptUrl.href, ...args);
+  return commandArgs;
+}
+
 function createWebSocketTransport(): IPCWorkerTransport {
   const token = crypto.randomUUID();
   let resolveSocket!: (socket: WebSocket) => void;
@@ -91,43 +128,17 @@ export class IPCWorker extends EventTarget implements Worker {
 
   constructor(scriptUrl: string | URL, options?: IPCWorkerOptions) {
     super();
-    if (
-      Deno.build.os === "windows" &&
-      !Deno.execPath().toLowerCase().endsWith("deno.exe")
-    ) {
-      throw new Error(
-        "IPCWorker requires an explicit Deno child launcher in compiled builds",
-      );
-    }
-    if (
-      Deno.build.os !== "windows" &&
-      !Deno.execPath().split("/").at(-1)?.startsWith("deno")
-    ) {
-      throw new Error(
-        "IPCWorker requires an explicit Deno child launcher in compiled builds",
-      );
-    }
-
     this.transport = (options?.transportFactory ?? createWebSocketTransport)();
     this.attachTransport(this.transport.worker);
 
-    const configPath = `${Deno.cwd().replace(/\/$/, "")}/deno.json`;
-    const commandArgs = ["run", "-A", "--unstable-webgpu", "--no-check"];
-    try {
-      Deno.statSync(configPath);
-      commandArgs.push(`--config=${configPath}`);
-    } catch {
-      // Deno can resolve the child without an explicit project config.
-    }
-    commandArgs.push(
-      new URL(this.transport.hostModule, import.meta.url).href,
-      ...this.transport.hostArguments,
-      `--script=${new URL(scriptUrl, `file://${Deno.cwd()}/`).href}`,
-      `--name=${options?.name ?? String(scriptUrl)}`,
-    );
-
     this.child = new Deno.Command(Deno.execPath(), {
-      args: commandArgs,
+      args: workerChildArgs(new URL(this.transport.hostModule, import.meta.url), [
+        ...this.transport.hostArguments,
+        // An absolute URL once the caller resolved it against `import.meta.url` (a checkout path, or
+        // the dispatcher's snapshot href); resolved against the cwd for a bare relative script name.
+        `--script=${new URL(scriptUrl, `file://${Deno.cwd()}/`).href}`,
+        `--name=${options?.name ?? String(scriptUrl)}`,
+      ]),
       cwd: Deno.cwd(),
       stdin: "null",
       stdout: "inherit",
