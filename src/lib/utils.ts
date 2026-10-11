@@ -78,34 +78,48 @@ export function resolveActorRefsForClone<T>(value: T): T {
   return result as T;
 }
 
+/**
+ * Revives `{ __bigint__: "<digits>" }` markers (JSON transports) into BigInts.
+ *
+ * Copy-on-write: a payload without markers, which is nearly every message, comes back as the same
+ * object, so per-frame payloads are walked but never re-allocated.
+ */
 export function processBigInts(data: any): any {
-  if (data === null || data === undefined) {
+  if (data === null || typeof data !== 'object') {
     return data;
   }
-  if (typeof data === 'object') {
-    if (data !== null && '__bigint__' in data) {
-      return BigInt(data.__bigint__);
-    }
-
-    if (Array.isArray(data)) {
-      return data.map(item => processBigInts(item));
-    }
-
-    // `for...in` on SharedArrayBuffer / ArrayBuffer yields nothing → was becoming `{}`.
-    // Typed arrays must not be walked (indices → plain objects); same for DataView.
-    if (data instanceof ArrayBuffer || data instanceof SharedArrayBuffer) {
-      return data;
-    }
-    if (ArrayBuffer.isView(data)) {
-      return data;
-    }
-
-    const result: Record<string, any> = {};
-    for (const key in data) {
-      result[key] = processBigInts(data[key]);
-    }
-    return result;
+  // Typed arrays / buffers / DataView must not be walked (indices → plain objects).
+  if (
+    data instanceof ArrayBuffer || data instanceof SharedArrayBuffer ||
+    ArrayBuffer.isView(data)
+  ) {
+    return data;
+  }
+  if ('__bigint__' in data) {
+    return BigInt(data.__bigint__);
   }
 
-  return data;
+  if (Array.isArray(data)) {
+    let copy: any[] | null = null;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const next = processBigInts(item);
+      if (next !== item) {
+        copy ??= data.slice();
+        copy[i] = next;
+      }
+    }
+    return copy ?? data;
+  }
+
+  let copy: Record<string, any> | null = null;
+  for (const key in data) {
+    const value = data[key];
+    const next = processBigInts(value);
+    if (next !== value) {
+      copy ??= { ...data };
+      copy[key] = next;
+    }
+  }
+  return copy ?? data;
 }
