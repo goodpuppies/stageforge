@@ -117,8 +117,7 @@ export function processBigInts(data: any): any {
     const value = data[key];
     const next = processBigInts(value);
     if (next !== value) {
-      copy ??= { ...data };
-      copy[key] = next;
+      (copy ??= { ...data })[key] = next;
     }
   }
   return copy ?? data;
