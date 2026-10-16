@@ -2,6 +2,7 @@ import { Signal } from "./Signal.ts";
 import {
   type ActorId,
   type ActorW,
+  createActorId,
   type GenericActorFunctions,
   type Message,
   type MessageFrom,
@@ -28,6 +29,8 @@ import {
 } from "./ActorLifecycle.ts";
 
 // Worker constructor type that matches the standard Worker constructor
+export type ProxyTransportFactory = (endpoint: unknown) => Worker;
+
 export type WorkerConstructor = new (
   scriptURL: string | URL,
   options?: WorkerOptions,
@@ -73,6 +76,7 @@ export class PostalService {
   private callbackMap: Map<symbol, Signal<any>> = new Map();
   private static WorkerClass: WorkerConstructor = Worker;
   private readonly workerRegistry = new Map<WorkerKind, WorkerConstructor>();
+  private readonly proxyRegistry = new Map<string, ProxyTransportFactory>();
   private signalingClient: SignalingClient | null = null;
   private static mainInstance: PostalService | null = null;
   private static rootActor: RootActorConfig | null = null;
@@ -148,6 +152,85 @@ export class PostalService {
     }
     this.workerRegistry.set(kind, workerClass);
     return this;
+  }
+
+  registerProxyTransport(kind: string, factory: ProxyTransportFactory): this {
+    if (!kind.trim()) throw new Error("Proxy transport kind must not be empty");
+    this.proxyRegistry.set(kind, factory);
+    return this;
+  }
+
+  connectProxy(
+    actorId: ActorId,
+    transport: string,
+    endpoint: unknown,
+  ): ActorId {
+    createActorId(actorId);
+    if (PostalService.actors.has(actorId)) {
+      throw new Error(`Actor already registered: ${actorId}`);
+    }
+    const factory = this.proxyRegistry.get(transport);
+    if (!factory) throw new Error(`Unknown proxy transport: ${transport}`);
+    return this.attachProxy(actorId, factory(endpoint), {
+      transport,
+      endpoint,
+    });
+  }
+
+  /** Attach a route to an already initialized actor. Does not send INIT or await LOADED.
+   * `worker.terminate()` must close only this proxy's local transport, never stop the peer.
+   */
+  attachProxy(
+    actorId: ActorId,
+    worker: Worker,
+    metadata?: { transport?: string; endpoint?: unknown },
+  ): ActorId {
+    createActorId(actorId);
+    if (PostalService.actors.has(actorId)) {
+      throw new Error(`Actor already registered: ${actorId}`);
+    }
+    worker.onmessage = (event: MessageEvent) => {
+      void this.OnMessage(event.data).catch((error) =>
+        PostalService.onActorWorkerError?.(
+          new ErrorEvent("error", { error, message: String(error) }),
+        )
+      );
+    };
+    worker.onerror = (event) => PostalService.onActorWorkerError?.(event);
+    worker.onmessageerror = () =>
+      PostalService.onActorWorkerError?.(
+        new ErrorEvent("messageerror", {
+          message: `Proxy message error: ${actorId}`,
+        }),
+      );
+    PostalService.actors.set(actorId, {
+      worker,
+      ownership: "external",
+      proxyTransport: metadata?.transport,
+      proxyEndpoint: metadata?.endpoint,
+      createdAt: Date.now(),
+      reloadCount: 0,
+    });
+    return actorId;
+  }
+
+  /** Remove an external route without sending SHUTDOWN/INIT or changing remote state. */
+  detachProxy(actorId: ActorId): boolean {
+    const actor = PostalService.actors.get(actorId);
+    if (!actor) return false;
+    if (actor.ownership !== "external") {
+      throw new Error(`Actor is locally owned: ${actorId}`);
+    }
+    // Permit transport shutdown to reject pending requests through the still-wired route.
+    actor.worker.terminate();
+    actor.worker.onmessage = null;
+    actor.worker.onerror = null;
+    actor.worker.onmessageerror = null;
+    PostalService.actors.delete(actorId);
+    for (const contacts of PostalService.topicRegistry.values()) {
+      contacts.delete(actorId);
+    }
+    return true;
   }
 
   private resolveWorkerClass(kind?: WorkerKind): WorkerConstructor {
@@ -326,7 +409,9 @@ export class PostalService {
       throw new Error("LOADED message received but no matching callback found");
     },
     DELETE: (payload: ActorId) => {
-      PostalService.actors.delete(payload);
+      if (PostalService.actors.get(payload)?.ownership === "external") {
+        this.detachProxy(payload);
+      } else PostalService.actors.delete(payload);
     },
     MURDER: async (payload: ActorId) => {
       await this.murder(payload);
@@ -384,11 +469,24 @@ export class PostalService {
         this.doTopicUpdate(topicSet, actorId, delmode);
       }
     },
+    ATTACHPROXY: (
+      payload: { actorId: ActorId; transport: string; endpoint: unknown },
+    ) =>
+      this.connectProxy(payload.actorId, payload.transport, payload.endpoint),
+    DETACHPROXY: (payload: { actorId: ActorId }) =>
+      this.detachProxy(payload.actorId),
     ADDREMOTE: (
-      payload: { actorId: ActorId; topic: TopicName; nodeId: string },
+      payload: {
+        actorId: ActorId;
+        topic: TopicName;
+        nodeId?: string;
+        nodeid?: string;
+      },
     ) => {
       console.log("ADDREMOTE");
-      const { actorId, topic, nodeId } = payload;
+      const { actorId, topic } = payload;
+      const nodeId = payload.nodeId ?? payload.nodeid;
+      if (!nodeId) throw new Error("Missing Iroh node ID");
       if (!PostalService.actors.has(actorId)) {
         LogChannel.log(
           "postalservice",
@@ -522,6 +620,11 @@ export class PostalService {
 
   async reload(actorId: ActorId): Promise<ActorInspectInfo> {
     const oldActor = PostalService.actors.get(actorId);
+    if (oldActor?.ownership === "external") {
+      throw new Error(
+        `Cannot reload externally owned actor ${actorId}; detach and reattach its proxy`,
+      );
+    }
     if (!oldActor?.actorname) {
       throw new Error(
         `Cannot reload actor without local creation metadata: ${actorId}`,
@@ -530,6 +633,7 @@ export class PostalService {
     const snapshot = await snapshotActor(this.lifecyclePost, actorId);
     await shutdownActor(this.lifecyclePost, actorId, "reload");
     oldActor.worker.terminate();
+    oldActor.ownerWorker?.terminate();
     PostalService.actors.delete(actorId);
     const loadedActorId = await this.add(
       oldActor.actorname,
@@ -581,9 +685,14 @@ export class PostalService {
 
   async murder(address: ActorId): Promise<void> {
     const actor = PostalService.actors.get(address);
+    if (actor?.ownership === "external") {
+      this.detachProxy(address);
+      return;
+    }
     if (actor) {
       await shutdownActor(this.lifecyclePost, address, "murder");
       actor.worker.terminate();
+      actor.ownerWorker?.terminate();
       PostalService.actors.delete(address);
     }
   }
@@ -871,15 +980,33 @@ export class PostalService {
     nodeId: string,
     local: boolean,
   ) {
-    if (local) {
-      const actor = PostalService.actors.get(actorId);
-      if (!actor) throw new Error(`Missing actor ${actorId}`);
-      //@ts-expect-error iroh worker specific
-      (actor.worker as any) = new PostalService.WorkerClass({ nodeId });
-    } else {
-      //@ts-expect-error iroh worker specific
-      const proxy = new PostalService.WorkerClass({ nodeId }) as Worker;
-      PostalService.actors.set(actorId, { worker: proxy });
+    const previous = PostalService.actors.get(actorId);
+    if (local && !previous) throw new Error(`Missing actor ${actorId}`);
+    if (!local && previous) {
+      throw new Error(`Actor already registered: ${actorId}`);
     }
+    //@ts-expect-error Legacy Iroh backend accepts endpoint descriptors as well as script URLs.
+    const proxy = new PostalService.WorkerClass({ nodeId }) as Worker;
+    if (previous) {
+      // Debug routing through Iroh does not transfer ownership of our own local actor.
+      previous.ownerWorker ??= previous.worker;
+      previous.worker.onmessage = null;
+      previous.worker = proxy;
+      previous.proxyTransport = "iroh";
+      previous.proxyEndpoint = { nodeId };
+      proxy.onmessage = (event) => {
+        void this.OnMessage(event.data).catch((error) =>
+          PostalService.onActorWorkerError?.(
+            new ErrorEvent("error", { error, message: String(error) }),
+          )
+        );
+      };
+      proxy.onerror = (event) => PostalService.onActorWorkerError?.(event);
+      return;
+    }
+    this.attachProxy(actorId, proxy, {
+      transport: "iroh",
+      endpoint: { nodeId },
+    });
   }
 }

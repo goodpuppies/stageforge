@@ -164,6 +164,12 @@ export type GenericActorFunctions = {
 
 // Actor interface to represent an actor in the system
 export interface ActorW {
+  /** Owned actor behind a local debug proxy route, if different from worker. */
+  ownerWorker?: Worker;
+  /** Missing means locally owned, for compatibility with existing actor entries. */
+  ownership?: "local" | "external";
+  proxyTransport?: string;
+  proxyEndpoint?: unknown;
   worker: Worker;
   workerKind?: WorkerKind;
   actorname?: string;

@@ -3,6 +3,9 @@ import type { ActorId, ActorW, WorkerKind } from "./types.ts";
 
 export type ActorInspectInfo = {
   actorId: ActorId;
+  ownership?: "local" | "external";
+  proxyTransport?: string;
+  proxyEndpoint?: unknown;
   actorname?: string;
   base?: string | URL;
   workerUrl?: string;
@@ -48,6 +51,9 @@ export function inspectActors(
 ): ActorInspectInfo[] {
   return [...actors.entries()].map(([actorId, actor]) => ({
     actorId,
+    ownership: actor.ownership ?? "local",
+    proxyTransport: actor.proxyTransport,
+    proxyEndpoint: actor.proxyEndpoint,
     actorname: actor.actorname,
     base: actor.base,
     workerUrl: actor.workerUrl,
@@ -183,9 +189,16 @@ export async function rebootActorGraph(options: {
   const actorEntries = [...actors.entries()];
   // Dependants are created after the resources they consume. Tear down in the
   // opposite order so native owners outlive all borrowed pointers and loops.
-  for (const [actorId] of actorEntries.toReversed()) {
-    await shutdownActor(options.post, actorId, "reboot");
-    actors.get(actorId)?.worker.terminate();
+  for (const [actorId, actor] of actorEntries.toReversed()) {
+    // A proxy owns only its local connection. Reboot must not shut down the remote actor.
+    if (actor.ownership !== "external") {
+      await shutdownActor(options.post, actorId, "reboot");
+    }
+    actor.worker.terminate();
+    if (actor.ownership !== "external") actor.ownerWorker?.terminate();
+    actor.worker.onmessage = null;
+    actor.worker.onerror = null;
+    actor.worker.onmessageerror = null;
   }
   actors.clear();
   options.clearTopics();
