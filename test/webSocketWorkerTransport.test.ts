@@ -64,3 +64,10 @@ Deno.test("WebSocketWorker operates independently over an existing socket", asyn
   worker.terminate();
   await server.shutdown();
 });
+
+Deno.test("WebSocketWorker drops messages posted after terminate, like Worker", () => {
+  const worker = new WebSocketWorker(new Promise<WebSocket>(() => {}));
+  worker.terminate();
+  // A relay still in flight during teardown must not throw into its sender's handler.
+  worker.postMessage({ late: true });
+});

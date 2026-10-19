@@ -37,9 +37,9 @@ export class WebSocketWorker extends EventTarget implements Worker {
     message: unknown,
     transferOrOptions?: Transferable[] | StructuredSerializeOptions,
   ): void {
-    if (this.terminated) {
-      throw new DOMException("Worker has been terminated", "InvalidStateError");
-    }
+    // Like a terminated Worker: drop the message. Relays still in flight during teardown
+    // would otherwise throw out of the sender's message handler.
+    if (this.terminated) return;
     if (transferList(transferOrOptions).length > 0) {
       throw new DOMException(
         "Transferable objects are not supported across WebSocketWorker boundaries",
